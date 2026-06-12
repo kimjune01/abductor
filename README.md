@@ -88,7 +88,7 @@ hypothesis-graph CRUD, set reconciliation) is in [`examples/leap_year/`](example
 
 abductor ships with the loop that uses it:
 
-- **Skill** — [`/debug`](.claude/skills/debug/SKILL.md): orchestrates reproduce → calibrate → fix → grade → climb while building a hypothesis graph, with the no-peeking discipline.
+- **Skill** — [`/abduct`](.claude/skills/abduct/SKILL.md): orchestrates reproduce → calibrate → fix → grade → climb while building a hypothesis graph, with the no-peeking discipline.
 - **Example prompt** — [`examples/repair-prompt.md`](examples/repair-prompt.md): a leak-free, fill-in-the-blanks prompt that hands the loop to a coding agent (codex, Claude, …). It demands generality and supplies the gate, but never names the property or the fix, so the model reconstructs the rule on its own, with nothing leaked.
 
 ## Status

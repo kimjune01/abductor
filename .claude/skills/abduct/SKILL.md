@@ -1,9 +1,9 @@
 ---
-name: debug
+name: abduct
 description: Fix a bug whose correct fix is a general PREDICATE (not a single case) by hill-climbing against an external abductor gate while building a hypothesis graph. The gate forces the model to represent the rule instead of tabulating the example; the graph records why each fix died and what it generated. Use when a repair must generalize — soundness bugs, missing-case checks, taxonomy/classification fixes — and "make it general" prompting plateaus narrow.
 ---
 
-# debug
+# abduct
 
 You are repairing a bug whose real fix is a property over a whole family of inputs, not just the reported one. Left to itself a model patches the reported case; told to self-test, it tests what it already believes. `abductor` breaks that loop by holding an answer key you cannot see — a calibrated, enumerated space of cases with external ground truth — and you hill-climb against it.
 
