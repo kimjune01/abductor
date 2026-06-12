@@ -1,0 +1,15 @@
+# Python (uv)
+__pycache__/
+*.py[cod]
+.venv/
+.uv/
+dist/
+build/
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+# scratch / local
+/tmp/
+*.log
+.DS_Store
