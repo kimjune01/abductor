@@ -34,7 +34,7 @@ uv run abductor --help
 
 abductor ships with the loop that uses it:
 
-- **Skill** — [`.claude/skills/abduct`](.claude/skills/abduct/SKILL.md): orchestrates reproduce → calibrate → fix → grade → climb, with the no-peeking discipline.
+- **Skill** — [`/debug`](.claude/skills/debug/SKILL.md): orchestrates reproduce → calibrate → fix → grade → climb while building a hypothesis graph, with the no-peeking discipline.
 - **Example prompt** — [`examples/repair-prompt.md`](examples/repair-prompt.md): a leak-free, fill-in-the-blanks prompt that hands the loop to a coding agent (codex, Claude, …). It demands generality and supplies the gate, but never names the property or the fix — so reaching the rule is the model's own reconstruction, not a leak.
 
 ## Status
