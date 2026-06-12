@@ -182,24 +182,42 @@ def _node_dict(g: HypothesisGraph, node) -> dict:
     return next(n for n in g.to_dict()["nodes"] if n["id"] == node.id)
 
 
+def _node(g: HypothesisGraph, nid: int):
+    """Return node nid, or None after printing an instructive not-found message."""
+    if 0 <= nid < len(g.nodes):
+        return g.nodes[nid]
+    n = len(g.nodes)
+    where = f"ids 0..{n - 1}" if n else "no nodes yet"
+    warn(f"no node #{nid}. The graph has {n} ({where}); see them with "
+         f"`abductor graph show`, or start one with `abductor node probe`.")
+    return None
+
+
+def _parent_ok(g: HypothesisGraph, pid: int):
+    """Resolve a --from parent, or None after an instructive message."""
+    p = _node(g, pid)
+    if p is None:
+        return None
+    if p.status is not Status.KILLED:
+        warn(f"can't link to #{pid}: it is {p.status.value}, and a successor links only "
+             f"from a killed hypothesis. Kill it first "
+             f"(`abductor node kill {pid} --outcome ...`), or drop --from for a fresh node.")
+        return None
+    return p
+
+
 def cmd_node_add(args: argparse.Namespace) -> int:
     g = _load(args)
     if g is None:
         return EXIT_NOTFOUND
-    try:
-        if args.from_node is not None:
-            node = g.from_kill(
-                args.from_node, args.hypothesis, trial=args.trial,
-                kill_if=args.kill_if, credence=args.credence,
-            )
-        else:
-            node = g.abduce(
-                args.hypothesis, trial=args.trial, kill_if=args.kill_if,
-                credence=args.credence, mode=Mode(args.mode),
-            )
-    except (ValueError, IndexError) as e:
-        warn(str(e))
-        return EXIT_ERROR
+    if args.from_node is not None:
+        if _parent_ok(g, args.from_node) is None:
+            return EXIT_ERROR
+        node = g.from_kill(args.from_node, args.hypothesis, trial=args.trial,
+                           kill_if=args.kill_if, credence=args.credence)
+    else:
+        node = g.abduce(args.hypothesis, trial=args.trial, kill_if=args.kill_if,
+                        credence=args.credence, mode=Mode(args.mode))
     g.save(args.graph)
     emit(args, _node_dict(g, node), f"added #{node.id} ({node.mode.value})")
     return EXIT_OK
@@ -209,12 +227,17 @@ def _classify(args: argparse.Namespace, witness: bool) -> int:
     g = _load(args)
     if g is None:
         return EXIT_NOTFOUND
-    try:
-        node = (g.witness(args.id, outcome=args.outcome, credence=args.credence)
-                if witness else g.kill(args.id, outcome=args.outcome))
-    except (ValueError, IndexError) as e:
-        warn(str(e))
+    node = _node(g, args.id)
+    if node is None:
+        return EXIT_NOTFOUND
+    if node.status is not Status.OPEN:
+        nxt = f" --from {args.id}" if node.status is Status.KILLED else ""
+        warn(f"#{args.id} is already {node.status.value}; verdicts are write-once. "
+             f"Record the next step as a new node: "
+             f"`abductor node probe \"<hypothesis>\"{nxt} --trial ...`.")
         return EXIT_ERROR
+    node = (g.witness(node, outcome=args.outcome, credence=args.credence)
+            if witness else g.kill(node, outcome=args.outcome))
     g.save(args.graph)
     emit(args, _node_dict(g, node), f"#{node.id} -> {node.status.value}")
     return EXIT_OK
@@ -232,11 +255,10 @@ def cmd_node_prune(args: argparse.Namespace) -> int:
     g = _load(args)
     if g is None:
         return EXIT_NOTFOUND
-    try:
-        node = g.prune(args.id)
-    except IndexError as e:
-        warn(str(e))
+    node = _node(g, args.id)
+    if node is None:
         return EXIT_NOTFOUND
+    g.prune(node)
     g.save(args.graph)
     emit(args, _node_dict(g, node), f"#{node.id} pruned (record kept)")
     return EXIT_OK
@@ -257,16 +279,14 @@ def cmd_node_probe(args: argparse.Namespace) -> int:
     g = _load(args)
     if g is None:
         return EXIT_NOTFOUND
-    try:
-        if args.from_node is not None:
-            node = g.from_kill(args.from_node, args.hypothesis, trial=args.trial,
-                               kill_if=args.kill_if, credence=args.credence)
-        else:
-            node = g.abduce(args.hypothesis, trial=args.trial, kill_if=args.kill_if,
-                            credence=args.credence)
-    except (ValueError, IndexError) as e:
-        warn(str(e))
-        return EXIT_ERROR
+    if args.from_node is not None:
+        if _parent_ok(g, args.from_node) is None:
+            return EXIT_ERROR
+        node = g.from_kill(args.from_node, args.hypothesis, trial=args.trial,
+                           kill_if=args.kill_if, credence=args.credence)
+    else:
+        node = g.abduce(args.hypothesis, trial=args.trial, kill_if=args.kill_if,
+                        credence=args.credence)
 
     proc = _run_trial(args.trial)
     rc = proc.returncode
@@ -288,6 +308,9 @@ def cmd_node_probe(args: argparse.Namespace) -> int:
     result["trial_stdout"] = proc.stdout.strip()  # transient: read it, do not expect it stored
     if rc not in (EXIT_OK, EXIT_DISAGREE):
         result["stderr_tail"] = proc.stderr.strip()[-400:]
+        warn(f"trial exited {rc}, not 0 or 10; #{node.id} left open. The trial must run a "
+             f"check that exits 0 (agree) or 10 (disagree), e.g. `abductor gate ...`. "
+             f"Fix the --trial command and probe again.")
     emit(args, result, f"#{node.id} probe rc={rc} -> {node.status.value}\n{proc.stdout.strip()}")
     return rc if rc in (EXIT_OK, EXIT_DISAGREE) else EXIT_ERROR
 
@@ -298,10 +321,8 @@ def cmd_replay(args: argparse.Namespace) -> int:
     g = _load(args)
     if g is None:
         return EXIT_NOTFOUND
-    try:
-        node = g.get(args.id)
-    except IndexError as e:
-        warn(str(e))
+    node = _node(g, args.id)
+    if node is None:
         return EXIT_NOTFOUND
     proc = _run_trial(node.trial)
     rc = proc.returncode
