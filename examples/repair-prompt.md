@@ -26,7 +26,7 @@ Hand-picked tests only cover what you already suspect. Instead, hill-climb again
    abductor grade --calib <calib.json> --candidate <your build>
    ```
    It returns `pass=false` with the first mishandled cases, or `pass=true` only when every wrong case flips and nothing correct regresses.
-3. Each mishandled case is a counterexample outside your current hypothesis. Fix the deeper cause, rebuild, re-grade. Do NOT stop at the first build that handles the reported case — stop only at `pass=true` with zero collateral.
+3. Each mishandled case is a counterexample outside your current hypothesis. Record each attempt as a node in `abduct-graph.md` — your hypothesis, the gate result, which cases killed it, and the deeper cause they point to (the edge) — then fix that cause, rebuild, re-grade. Do NOT stop at the first build that handles the reported case — stop only at `pass=true` with zero collateral and a closed frontier.
 4. Then attack the off-diagonal yourself: construct an input where what the tool *believes* and what is *true* disagree, and a genuinely-valid input that superficially resembles the bug. Confirm the first is handled and the second is not over-rejected.
 
 ## Boundaries

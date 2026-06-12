@@ -18,7 +18,7 @@ Hand a model a bug whose real fix is a *predicate* and it patches the case in fr
 2. **Calibrate.** Grade every case against a known-good baseline, so each carries *external* ground truth.
 3. **Gate.** Expose one pass/fail signal. The model hill-climbs against it.
 
-Because the gate's coverage — not the model's prior — sets the frontier, the model is dragged past the example into the rule. In a case study on a real soundness bug, a gate of this shape took a strong model from a narrow one-case patch to a general fix that reached for the verifier's own decision procedure, where six prompt-only "reasoning method" arms stayed narrow.
+Each gate run is a perturbation; each mishandled case is a kill condition that generates the next hypothesis. The loop records itself as a **hypothesis graph** — fixes are nodes, counterexamples are edges — so the climb is legible and composable. Because the gate's coverage — not the model's prior — sets the frontier, the model is dragged past the example into the rule. In a case study on a real soundness bug, a gate of this shape took a strong model from a narrow one-case patch to a general fix that reached for the verifier's own decision procedure, where six prompt-only "reasoning method" arms stayed narrow.
 
 The thing the gate is really checking is a disagreement — an XOR, a symmetric difference: where *what the compiler believes* and *what is actually true* come apart. That's the check tests and type systems can't give you, because **absence has no test**.
 
