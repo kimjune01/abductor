@@ -30,6 +30,13 @@ Uses [`uv`](https://docs.astral.sh/uv/).
 uv run abductor --help
 ```
 
+## Drive it with an agent
+
+abductor ships with the loop that uses it:
+
+- **Skill** — [`.claude/skills/abduct`](.claude/skills/abduct/SKILL.md): orchestrates reproduce → calibrate → fix → grade → climb, with the no-peeking discipline.
+- **Example prompt** — [`examples/repair-prompt.md`](examples/repair-prompt.md): a leak-free, fill-in-the-blanks prompt that hands the loop to a coding agent (codex, Claude, …). It demands generality and supplies the gate, but never names the property or the fix — so reaching the rule is the model's own reconstruction, not a leak.
+
 ## Status
 
 Early and experimental. Born as the `case-check` tool in a verifier case study; this is its clean-room home. The repair-loop API and the first language backends are landing here.
