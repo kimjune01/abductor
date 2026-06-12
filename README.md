@@ -22,13 +22,41 @@ Each gate run is a perturbation; each mishandled case is a kill condition that g
 
 The thing the gate is really checking is a disagreement — an XOR, a symmetric difference: where *what the compiler believes* and *what is actually true* come apart. That's the check tests and type systems can't give you, because **absence has no test**.
 
-## Quickstart
+## Install
 
-Uses [`uv`](https://docs.astral.sh/uv/).
+Zero dependencies, Python 3.11+. Pick one:
 
 ```bash
-uv run abductor --help
+uv tool install git+https://github.com/kimjune01/abductor   # installs the `abductor` command
+uvx --from git+https://github.com/kimjune01/abductor abductor --help   # run once, no install
 ```
+
+From a clone (for development): `uv run abductor --help`. Wherever the PATH shim
+is unavailable, `python -m abductor ...` is an exact equivalent — handy for agents.
+
+## Quickstart
+
+```bash
+abductor gate --believe candidate.txt --truth baseline.txt   # rc 0 agree, rc 10 disagree
+abductor codes                                               # the exit-code verdict table
+```
+
+The CLI is **agent-first**: the exit code is the verdict (route on it, no parsing),
+JSON goes to stdout when piped, and the tool only caches and reconciles — it never
+proposes or ranks a fix. One fused call drives a debug loop:
+
+```bash
+abductor graph init "1900 is reported leap, but it is not"
+abductor node probe "div by 4" --trial "abductor gate --believe <(./fix) --truth t.txt" --kill-if any
+# rc 10 → the node is killed and recorded; read the disagreement, form the next hypothesis
+abductor node probe "div by 4, except centuries unless div by 400" --from 0 \
+    --trial "abductor gate --believe <(./fix2) --truth t.txt" --kill-if any   # rc 0 → witnessed
+abductor replay 1   # re-runs the recorded trial, checks the exact exit code reproduces
+```
+
+Design and the full command surface are in [`docs/CLI.md`](docs/CLI.md). A worked
+toy (leap-year repair, hypothesis-graph CRUD, set reconciliation) is in
+[`examples/leap_year/`](examples/leap_year/).
 
 ## Drive it with an agent
 
