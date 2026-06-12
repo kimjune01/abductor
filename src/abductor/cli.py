@@ -48,6 +48,20 @@ EXIT_CODES = {
 DEFAULT_GRAPH = os.environ.get("ABDUCTOR_GRAPH", "inquiry.json")
 BASH = "/bin/bash"  # trials may use process substitution <(...), which needs bash
 
+DRIVING_CONTRACT = """\
+the loop (you supply each hypothesis and trial; the tool reconciles and records):
+
+  abductor graph init "the surprising observation"
+  abductor node probe "a hypothesis" \\
+      --trial "abductor gate --believe <(./fix) --truth truth.txt" --kill-if any
+      # exit 10 -> killed (read the disagreement in trial_stdout, form the next one)
+      # exit 0  -> witnessed; --from <id> links a node to the hypothesis it succeeds
+  abductor replay <id>     # re-run the trial; reproduces iff the exit code matches
+
+the exit code is the verdict (run `abductor codes`): 0 agree, 10 disagree.
+JSON goes to stdout when piped; the graph is a small file (a checkpoint, not a DB).
+"""
+
 
 # -- output helpers -----------------------------------------------------------
 
@@ -340,6 +354,8 @@ def build_parser() -> argparse.ArgumentParser:
         prog="abductor",
         description="Execution-gated abductive evaluation. The tool caches and "
         "reconciles; the agent judges.",
+        epilog=DRIVING_CONTRACT,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     p.add_argument("--version", action="version", version="abductor 0.0.1")
     _add_common(p, suppress=False)  # flags usable before the subcommand

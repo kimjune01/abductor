@@ -54,9 +54,10 @@ abductor node probe "div by 4, except centuries unless div by 400" --from 0 \
 abductor replay 1   # re-runs the recorded trial, checks the exact exit code reproduces
 ```
 
-Design and the full command surface are in [`docs/CLI.md`](docs/CLI.md). A worked
-toy (leap-year repair, hypothesis-graph CRUD, set reconciliation) is in
-[`examples/leap_year/`](examples/leap_year/).
+`abductor --help` prints this loop and `abductor codes` the verdict table, so an
+agent can drive the tool without leaving the terminal. Design and the full command
+surface are in [`docs/CLI.md`](docs/CLI.md). A worked toy (leap-year repair,
+hypothesis-graph CRUD, set reconciliation) is in [`examples/leap_year/`](examples/leap_year/).
 
 ## Drive it with an agent
 
