@@ -60,11 +60,24 @@ cache: build it, mutate it, and the whole inquiry lives in one process's RAM, ne
 touching disk (`examples/leap_year/inquiry.py` runs exactly this way). The IBLT
 sketch is likewise O(d) and in-memory.
 
-The CLI's `--graph FILE` is therefore a **checkpoint, not a store** — a small JSON
-dump of that in-memory structure, written so a fresh `abductor` process (a new
-shell, a separate agent step) can pick the inquiry back up. It is the serialization
-of the cache, not the cache itself. If the harness is a single long-lived process,
+The CLI's `--graph FILE` is therefore a small JSON dump of that in-memory
+structure, written so a fresh `abductor` process (a new shell, a separate agent
+step) can pick the inquiry back up. If the harness is a single long-lived process,
 skip the file and hold the `HypothesisGraph` in memory directly.
+
+### Saved for the record, and built to be audited
+
+That same file is the durable record — and auditability is the point, so it is
+written to be inspected, not just resumed. Every `save` writes two siblings: the
+`.json` is the replay substrate a fresh process loads; a `.md` beside it is the
+**human-inspectable audit surface**, regenerated on every step so it is never
+stale. An auditor opens `inquiry.md` and reads the whole inquiry — each hypothesis,
+its exact trial command, its verdict, its credence, and the exit code at which it
+`reproduces` — without running anything. Nothing is hidden behind a query: it is a
+flat, append-only text file. The agent "saves for the record" simply by keeping (or
+committing) the pair; the warrant travels with it, because every node names the
+exact command a stranger reruns to check it. `abductor graph show --markdown` prints
+the same surface on demand.
 
 ### 2. The exit code is the verdict
 

@@ -271,7 +271,12 @@ class HypothesisGraph:
         return g
 
     def save(self, path: str | Path) -> None:
-        Path(path).write_text(json.dumps(self.to_dict(), indent=2) + "\n")
+        """Write the record. JSON is the replay substrate; a markdown sibling is
+        the human-inspectable audit surface, kept current on every save so an
+        auditor never has to run a command to read the inquiry."""
+        p = Path(path)
+        p.write_text(json.dumps(self.to_dict(), indent=2) + "\n")
+        p.with_suffix(".md").write_text(self.to_markdown() + "\n")
 
     @classmethod
     def load(cls, path: str | Path) -> "HypothesisGraph":
@@ -289,9 +294,12 @@ class HypothesisGraph:
         lines = [f"# Inquiry: {self.observation}", ""]
         for n in self.nodes:
             arrow = "" if n.parent_id is None else f" (from kill of #{n.parent_id})"
+            meta = f"- mode: {n.mode.value}  ·  credence: {n.credence:.2f}  ·  status: {n.status.value}"
+            if n.expected_exit is not None:
+                meta += f"  ·  reproduces at exit {n.expected_exit}"
             lines += [
                 f"## {glyph[n.status]} #{n.id} {n.hypothesis}{arrow}",
-                f"- mode: {n.mode.value}  ·  credence: {n.credence:.2f}  ·  status: {n.status.value}",
+                meta,
                 f"- trial: `{n.trial}`",
                 f"- kill if: {n.kill_if}",
                 f"- outcome: {n.outcome or '(untested)'}",

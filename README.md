@@ -54,6 +54,10 @@ abductor node probe "div by 4, except centuries unless div by 400" --from 0 \
 abductor replay 1   # re-runs the recorded trial, checks the exact exit code reproduces
 ```
 
+Every step writes the record: `inquiry.json` (the replay substrate) and a
+human-inspectable `inquiry.md` beside it (the audit surface), each node carrying the
+exact command a stranger reruns to check it. Keep or commit the pair for the record.
+
 `abductor --help` prints this loop and `abductor codes` the verdict table, so an
 agent can drive the tool without leaving the terminal. Design and the full command
 surface are in [`docs/CLI.md`](docs/CLI.md). A worked toy (leap-year repair,
