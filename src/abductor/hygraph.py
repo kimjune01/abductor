@@ -29,6 +29,8 @@ checkpointing for a fresh process, not a store.
 from __future__ import annotations
 
 import json
+import os
+import tempfile
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
@@ -271,12 +273,25 @@ class HypothesisGraph:
         return g
 
     def save(self, path: str | Path) -> None:
-        """Write the record. JSON is the replay substrate; a markdown sibling is
-        the human-inspectable audit surface, kept current on every save so an
-        auditor never has to run a command to read the inquiry."""
+        """Write the record crash-safely. JSON is the replay substrate; a markdown
+        sibling is the human-inspectable audit surface, kept current on every save.
+
+        Writes are atomic (temp file + fsync + os.replace), so a crash mid-write
+        never leaves a truncated or corrupt record: a reader sees either the old
+        file or the new one, never a half-written one. The in-memory graph shares
+        the agent's lifecycle and is not recovered on its own; this file is the
+        only thing that outlives a crash, so it is the only thing made durable."""
         p = Path(path)
-        p.write_text(json.dumps(self.to_dict(), indent=2) + "\n")
-        p.with_suffix(".md").write_text(self.to_markdown() + "\n")
+        _atomic_write(p, json.dumps(self.to_dict(), indent=2) + "\n")
+        _atomic_write(p.with_suffix(".md"), self.to_markdown() + "\n")
+
+    def match(self, hypothesis: str, trial: str, parent_id: int | None) -> Node | None:
+        """Find an existing node with identical content, so a retried append is
+        idempotent rather than duplicating the node."""
+        for n in self.nodes:
+            if n.hypothesis == hypothesis and n.trial == trial and n.parent_id == parent_id:
+                return n
+        return None
 
     @classmethod
     def load(cls, path: str | Path) -> "HypothesisGraph":
@@ -317,3 +332,21 @@ def _id_of(node: Node | int | None) -> int | None:
 def _assert_open(n: Node) -> None:
     if n.status is not Status.OPEN:
         raise ValueError(f"node #{n.id} already classified as {n.status.value} (verdict is write-once)")
+
+
+def _atomic_write(path: Path, text: str) -> None:
+    """Write text so a crash can't corrupt the target: stage to a temp file in the
+    same directory, flush+fsync, then os.replace (atomic on POSIX)."""
+    fd, tmp = tempfile.mkstemp(dir=str(path.parent or "."), prefix=path.name + ".", suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w") as f:
+            f.write(text)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp, path)
+    except BaseException:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise

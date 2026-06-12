@@ -22,6 +22,27 @@ Each gate run is a perturbation; each mishandled case is a kill condition that g
 
 The thing the gate is really checking is a disagreement — an XOR, a symmetric difference: where *what the compiler believes* and *what is actually true* come apart. That's the check tests and type systems can't give you, because **absence has no test**.
 
+## When to use it
+
+abductor fits a specific shape of problem. Reach for it when:
+
+- **The real fix is a rule, not a case, and you can enumerate the cases.** A validator that accepts a bad input, a date/leap/range predicate, a parser or normalizer, a tokenizer, a refinement-type soundness check — anything where "fix the reported case" leaves a class of siblings broken. The gate's coverage drags the fix from the one bug report to the general rule.
+- **You have a trusted baseline to grade against.** A reference implementation, an oracle, a known-good build, or the spec made executable. abductor's entire leverage is holding an answer key the model cannot see, so it can't grade itself into a comfortable, narrow fix.
+- **An LLM/agent is doing the repair and you don't want it writing its own tests.** A model told to "be general" or "write tests" samples both from its current hypothesis and converges on a self-consistent wrong answer. A *handed* gate fixes the objective before the hypothesis.
+- **The fix has to be auditable.** Soundness-sensitive code, a PR a maintainer must trust, a result a skeptic will rerun. The inquiry is recorded as a replayable hypothesis graph: every node names the exact command that checks it (see *auditability* below).
+- **You're checking that two implementations agree** — a refactor, a port, an optimization. `abductor gate` reconciles the two accept-sets and reports exactly the inputs where they diverge.
+- **The accept-sets are large or live on different machines.** `abductor sketch` / `--sketches` recovers the disagreement from an O(d) sketch, so neither full set has to enter a context window or cross a wire.
+
+## When not to use it
+
+It is the wrong tool when:
+
+- **The bug is a one-off with no class behind it** — a typo, a wrong constant, a single off-by-one that no sibling cases share. A plain unit test or a `diff` is simpler; the hypothesis graph buys nothing.
+- **You have no external ground truth.** With no baseline/oracle, abductor degrades to the model checking its own belief — precisely the failure mode it exists to prevent. Get an oracle first, or don't bother.
+- **The property isn't enumerable or perturbable** — nondeterministic behavior, heavy side effects, or "I'll know it when I see it" UX/aesthetic calls. No case space, no gate.
+- **You just want the fix, not the trail.** If a single failing test already reproduces the bug and you don't care about generality or an audit record, fix it directly and move on.
+- **You need shared, concurrent, or real-time state.** abductor is a single-writer, in-memory cache with a file checkpoint; it is not a database or a service.
+
 ## Install
 
 Zero dependencies, Python 3.11+. Pick one:

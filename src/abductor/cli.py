@@ -157,7 +157,14 @@ def _load(args: argparse.Namespace) -> HypothesisGraph | None:
 
 def cmd_graph_init(args: argparse.Namespace) -> int:
     if os.path.exists(args.graph) and not args.force:
-        warn(f"{args.graph} exists; pass --force to overwrite")
+        existing = HypothesisGraph.load(args.graph)
+        if existing.observation == args.observation:
+            # Idempotent: a retried init with the same observation is a no-op,
+            # not an error, so a crashed-and-retried agent recovers cleanly.
+            emit(args, existing.to_dict(), f"inquiry already initialized at {args.graph}")
+            return EXIT_OK
+        warn(f"{args.graph} holds a different inquiry ({existing.observation!r}); "
+             f"pass --force to overwrite it, or use a different --graph path")
         return EXIT_ERROR
     g = HypothesisGraph(observation=args.observation)
     g.save(args.graph)
@@ -210,6 +217,10 @@ def cmd_node_add(args: argparse.Namespace) -> int:
     g = _load(args)
     if g is None:
         return EXIT_NOTFOUND
+    dup = g.match(args.hypothesis, args.trial, args.from_node)
+    if dup is not None:  # idempotent: a retried append returns the same node
+        emit(args, _node_dict(g, dup), f"#{dup.id} already present (idempotent)")
+        return EXIT_OK
     if args.from_node is not None:
         if _parent_ok(g, args.from_node) is None:
             return EXIT_ERROR
@@ -230,6 +241,11 @@ def _classify(args: argparse.Namespace, witness: bool) -> int:
     node = _node(g, args.id)
     if node is None:
         return EXIT_NOTFOUND
+    target = Status.WITNESSED if witness else Status.KILLED
+    if node.status is target:
+        # Idempotent: re-applying the same verdict is a no-op, not an error.
+        emit(args, _node_dict(g, node), f"#{node.id} already {node.status.value} (idempotent)")
+        return EXIT_OK
     if node.status is not Status.OPEN:
         nxt = f" --from {args.id}" if node.status is Status.KILLED else ""
         warn(f"#{args.id} is already {node.status.value}; verdicts are write-once. "
@@ -279,14 +295,25 @@ def cmd_node_probe(args: argparse.Namespace) -> int:
     g = _load(args)
     if g is None:
         return EXIT_NOTFOUND
-    if args.from_node is not None:
-        if _parent_ok(g, args.from_node) is None:
-            return EXIT_ERROR
-        node = g.from_kill(args.from_node, args.hypothesis, trial=args.trial,
-                           kill_if=args.kill_if, credence=args.credence)
-    else:
-        node = g.abduce(args.hypothesis, trial=args.trial, kill_if=args.kill_if,
-                        credence=args.credence)
+    node = g.match(args.hypothesis, args.trial, args.from_node)
+    if node is not None and node.status is not Status.OPEN:
+        # Idempotent: this probe already ran and was classified. Return the
+        # recorded verdict without re-running the trial or duplicating the node.
+        result = _node_dict(g, node)
+        result["exit_code"] = node.expected_exit
+        result["idempotent"] = True
+        emit(args, result, f"#{node.id} already {node.status.value} (idempotent)")
+        return EXIT_OK if node.status is Status.WITNESSED else EXIT_DISAGREE
+    if node is None:
+        if args.from_node is not None:
+            if _parent_ok(g, args.from_node) is None:
+                return EXIT_ERROR
+            node = g.from_kill(args.from_node, args.hypothesis, trial=args.trial,
+                               kill_if=args.kill_if, credence=args.credence)
+        else:
+            node = g.abduce(args.hypothesis, trial=args.trial, kill_if=args.kill_if,
+                            credence=args.credence)
+    # else: node exists but is still OPEN (a prior trial errored) — re-run on it.
 
     proc = _run_trial(args.trial)
     rc = proc.returncode

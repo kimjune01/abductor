@@ -79,6 +79,27 @@ committing) the pair; the warrant travels with it, because every node names the
 exact command a stranger reruns to check it. `abductor graph show --markdown` prints
 the same surface on demand.
 
+### Crashproof and idempotent, the actor properties that apply
+
+Not a full actor runtime — a stateless CLI does not need mailboxes or supervisors —
+but the two guarantees an actor gives are cheap and worth having. The in-memory
+cache shares the agent's lifecycle: if the agent dies, the cache dies with it, and
+that is fine, there is nothing to recover. The *file* is the only thing that
+outlives a crash, so it is the only thing made durable:
+
+- **Crashproof writes.** Every `save` stages to a temp file, fsyncs, then
+  `os.replace`s into place — atomic on POSIX. A crash mid-write leaves either the
+  old record or the new one, never a truncated one. No `.tmp` is left behind.
+- **Idempotent retries.** An agent that retries after a timeout (not knowing if the
+  call landed) never doubles up. `graph init` with the same observation is a no-op;
+  `node add`/`node probe` with identical content return the existing node instead of
+  appending (and `probe` does not re-run the trial); re-applying the same `kill`/
+  `witness` verdict is a no-op. Flipping a verdict is still refused (write-once),
+  and a different observation still needs `--force` — idempotent, not careless.
+
+Single-writer is assumed (one agent owns one graph), the way one actor owns its
+state; concurrent writers to the same file are out of scope.
+
 ### 2. The exit code is the verdict
 
 clig.dev: "return zero on success, non-zero on failure." Pushed to its agent

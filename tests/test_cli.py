@@ -97,6 +97,51 @@ def test_replay_rejects_a_crash_as_a_kill():
         assert code == cli.EXIT_UNDECODED and json.loads(out)["reproduces"] is False
 
 
+def test_idempotent_retries_do_not_duplicate():
+    with tempfile.TemporaryDirectory() as t:
+        graph = f"{t}/g.json"
+        assert run(["graph", "init", "obs", "--graph", graph])[0] == 0
+        assert run(["graph", "init", "obs", "--graph", graph])[0] == 0          # re-init no-op
+        # re-init with a different observation is refused (not a silent overwrite)
+        assert run(["graph", "init", "other", "--graph", graph])[0] == cli.EXIT_ERROR
+
+        run(["node", "add", "h", "--graph", graph, "--trial", "true", "--kill-if", "k"])
+        run(["node", "add", "h", "--graph", graph, "--trial", "true", "--kill-if", "k"])  # dup
+        g = json.loads(run(["graph", "show", "--graph", graph, "--json"])[1])
+        assert len(g["nodes"]) == 1                                             # not duplicated
+
+        assert run(["node", "kill", "0", "--graph", graph, "--outcome", "x"])[0] == 0
+        assert run(["node", "kill", "0", "--graph", graph, "--outcome", "x"])[0] == 0  # re-kill no-op
+        # but flipping the verdict is still refused (write-once)
+        assert run(["node", "witness", "0", "--graph", graph, "--outcome", "y"])[0] == cli.EXIT_ERROR
+
+
+def test_idempotent_probe_does_not_rerun_or_duplicate():
+    with tempfile.TemporaryDirectory() as t:
+        graph = f"{t}/g.json"
+        run(["graph", "init", "obs", "--graph", graph])
+        a = run(["node", "probe", "h", "--graph", graph, "--trial", "exit 10"])
+        b = run(["node", "probe", "h", "--graph", graph, "--trial", "exit 10"])  # retry
+        assert a[0] == b[0] == cli.EXIT_DISAGREE
+        assert json.loads(b[1]).get("idempotent") is True
+        g = json.loads(run(["graph", "show", "--graph", graph, "--json"])[1])
+        assert len(g["nodes"]) == 1
+
+
+def test_save_is_atomic_and_writes_audit_copy():
+    with tempfile.TemporaryDirectory() as t:
+        graph = f"{t}/g.json"
+        run(["graph", "init", "1900 reported leap", "--graph", graph])
+        run(["node", "probe", "the rule", "--graph", graph, "--trial", "exit 0"])
+        import os
+        files = set(os.listdir(t))
+        assert "g.json" in files and "g.md" in files            # substrate + audit copy
+        assert not any(f.endswith(".tmp") for f in files)       # no leftover temp from atomic write
+        md = open(f"{t}/g.md").read()
+        assert "# Inquiry: 1900 reported leap" in md and "the rule" in md
+        json.loads(open(graph).read())                          # json is valid (not truncated)
+
+
 if __name__ == "__main__":
     fns = [v for k, v in sorted(globals().items()) if k.startswith("test_") and callable(v)]
     failed = 0
