@@ -129,7 +129,7 @@ for; on one local machine it is mostly future-proofing.
 abductor gate     --believe SET --truth SET [--sketches] [--cells N]   # reconcile → verdict
 abductor sketch   SET --cells N [--k 4] [--out FILE]                    # encode an O(d) sketch
 abductor graph    init OBSERVATION [--force] | show [--markdown]        # the smem the tool owns
-abductor node     probe HYP --trial CMD --kill-if COND [--from PARENT]  # create + test + classify
+abductor node     probe HYP --trial CMD [--kill-if COND] [--from PARENT] # create + test + classify
                   add   HYP --trial CMD --kill-if COND [--from PARENT]  # create / link (journal)
                   kill  ID --outcome TEXT                               # update (refuted)
                   witness ID --outcome TEXT [--credence F]              # update (test-backed)
@@ -145,12 +145,10 @@ into one call (the verdict is the trial's exit code, and that code is recorded s
 ```bash
 abductor graph init "year 1900 reported leap, but it is not"
 abductor node probe "special-case 1900" \
-    --trial "abductor gate --believe <(./fix) --truth truth.txt" \
-    --kill-if "any case in the symmetric difference"   # rc 10 → recorded killed
-# read the disagreement from the gate, form the next hypothesis from how it died
+    --trial "abductor gate --believe <(./fix) --truth truth.txt"    # rc 10 -> killed
+# read the disagreement from probe's trial_stdout, form the next hypothesis from how it died
 abductor node probe "div by 4, skip centuries unless div by 400" --from 0 \
-    --trial "abductor gate --believe <(./fix2) --truth truth.txt" \
-    --kill-if "any mishandled case"                    # rc 0 → recorded witnessed
+    --trial "abductor gate --believe <(./fix2) --truth truth.txt"   # rc 0 -> witnessed
 abductor replay 1     # re-runs the trial; reproduces iff the exit code matches exactly
 ```
 

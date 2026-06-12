@@ -402,10 +402,14 @@ def build_parser() -> argparse.ArgumentParser:
     na.add_argument("--credence", type=float, default=0.5)
     na.set_defaults(func=cmd_node_add)
     npb = ns.add_parser("probe", parents=[common],
-                        help="append a hypothesis, run its trial, and classify by exit code")
+                        help="append a hypothesis, run its trial, classify by exit code; "
+                        "the trial's output (the disagreement) comes back in trial_stdout")
     npb.add_argument("hypothesis")
-    npb.add_argument("--trial", required=True, help="the exact command that tests it (exit 0/10)")
-    npb.add_argument("--kill-if", required=True, dest="kill_if", help="the refuting condition")
+    npb.add_argument("--trial", required=True,
+                     help="the exact command that tests it (exit 0 witnesses, 10 kills); "
+                     "its stdout is returned as trial_stdout, so no separate gate run is needed")
+    npb.add_argument("--kill-if", dest="kill_if", default="trial reports a disagreement (exit 10)",
+                     help="the refuting condition (default: the trial exits 10)")
     npb.add_argument("--from", type=int, default=None, dest="from_node",
                      help="parent node id; the parent must be killed")
     npb.add_argument("--credence", type=float, default=0.5)
