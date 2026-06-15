@@ -45,14 +45,15 @@ It is the wrong tool when:
 
 ## Install
 
-Zero dependencies, Python 3.11+. Pick one:
+Zero dependencies, Python 3.11+. There is nothing to install but the tool itself, so use whatever installer you trust:
 
 ```bash
-uv tool install git+https://github.com/kimjune01/abductor   # installs the `abductor` command
-uvx --from git+https://github.com/kimjune01/abductor abductor --help   # run once, no install
+pipx install git+https://github.com/kimjune01/abductor      # installs the `abductor` command
+pipx run --spec git+https://github.com/kimjune01/abductor abductor --help   # run once, no install
+uv tool install git+https://github.com/kimjune01/abductor   # same, via uv
 ```
 
-From a clone (for development): `uv run abductor --help`. Wherever the PATH shim
+From a clone (for development): `pip install -e .` or `uv run abductor --help`. Wherever the PATH shim
 is unavailable, `python -m abductor ...` is an exact equivalent, handy for agents.
 
 ## Quickstart
