@@ -1,0 +1,32 @@
+cff-version: 1.2.0
+title: "abductor: an external-oracle gate for generalizing program repair"
+message: "If you use this software, please cite it. (DOI added on the Zenodo release.)"
+type: software
+version: "1.0.0"
+date-released: "2026-06-17"
+authors:
+  - family-names: Kim
+    given-names: June
+    email: kimjune01@gmail.com
+    # orcid: "https://orcid.org/0000-0000-0000-0000"   # add if you have one
+repository-code: "https://github.com/kimjune01/abductor"
+url: "https://github.com/kimjune01/abductor"
+license: AGPL-3.0-or-later
+keywords:
+  - abductive inference
+  - bi-abduction
+  - LLM program repair
+  - external oracle
+  - counterexample-guided refinement
+  - hypothesis graph
+  - set reconciliation
+  - machine epistemics
+abstract: >-
+  abductor externalizes the test so an LLM has to represent the rule instead of
+  tabulating the example. It enumerates a fixpoint-closed space of cases for the
+  property under repair, calibrates each against a known-good baseline so every
+  case carries external ground truth, and exposes one pass/fail gate the model
+  hill-climbs against. The gate's coverage, not the model's prior, sets the
+  generalization frontier, and the search records itself as a replayable
+  hypothesis graph (fixes as nodes, counterexamples as edges). Tooling behind the
+  paper "The Hypothesis Graph: Semantic Memory Written by Methodeutics".

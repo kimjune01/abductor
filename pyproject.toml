@@ -1,6 +1,6 @@
 [project]
 name = "abductor"
-version = "0.0.1"
+version = "1.0.0"
 description = "Execution-gated abductive evaluation for LLM-driven program repair and verification"
 readme = "README.md"
 requires-python = ">=3.11"

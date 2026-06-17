@@ -1,0 +1,27 @@
+{
+  "title": "abductor: an external-oracle gate for generalizing program repair",
+  "upload_type": "software",
+  "description": "abductor externalizes the test so an LLM has to represent the rule instead of tabulating the example. Hand a model a bug whose real fix is a predicate and it patches the case in front of it; told to 'be general' it agrees and stays narrow; told to 'write its own tests' it writes the tests it already believes in. abductor breaks the loop by holding an answer key the model cannot see: it enumerates a fixpoint-closed space of cases for the property under repair (wider than the model's hypothesis), calibrates each case against a known-good baseline so every case carries external ground truth, and exposes one pass/fail gate the model hill-climbs against. The gate's coverage, not the model's prior, sets the generalization frontier, and the search records itself as a replayable hypothesis graph (fixes as nodes, counterexamples as edges). The check is a disagreement, an XOR or symmetric difference between what a system believes and what is true, the check tests and type systems cannot give because absence has no test. Tooling behind the paper 'The Hypothesis Graph: Semantic Memory Written by Methodeutics'.",
+  "creators": [
+    { "name": "Kim, June", "affiliation": "Independent" }
+  ],
+  "license": "AGPL-3.0-or-later",
+  "access_right": "open",
+  "keywords": [
+    "abductive inference",
+    "bi-abduction",
+    "LLM program repair",
+    "external oracle",
+    "counterexample-guided refinement",
+    "hypothesis graph",
+    "set reconciliation",
+    "machine epistemics",
+    "provenance",
+    "reproducibility"
+  ],
+  "related_identifiers": [
+    { "relation": "isSupplementTo", "identifier": "https://june.kim/the-hypothesis-graph-semantic-memory-methodeutics", "resource_type": "publication-preprint", "scheme": "url" },
+    { "relation": "isReferencedBy", "identifier": "https://github.com/kimjune01/hygraph-mechanism", "scheme": "url" }
+  ],
+  "notes": "DOI is minted on the Zenodo release; the version tag and DOI are recorded in CITATION.cff."
+}
