@@ -3,6 +3,7 @@
 <p align="center"><strong><em>Take me to your invariant.</em></strong></p>
 
 <p align="center">
+  <a href="https://doi.org/10.5281/zenodo.20738161"><img src="https://img.shields.io/badge/DOI-10.5281%2Fzenodo.20738161-blue?style=for-the-badge" alt="DOI"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-AGPL--3.0-blue?style=for-the-badge" alt="License: AGPL-3.0"></a>
   <img src="https://img.shields.io/badge/python-3.11+-blue?style=for-the-badge" alt="Python 3.11+">
   <img src="https://img.shields.io/badge/status-experimental-orange?style=for-the-badge" alt="Status: experimental">
