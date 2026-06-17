@@ -1,6 +1,7 @@
 cff-version: 1.2.0
 title: "abductor: an external-oracle gate for generalizing program repair"
-message: "If you use this software, please cite it. (DOI added on the Zenodo release.)"
+message: "If you use this software, please cite it."
+doi: 10.5281/zenodo.20738161   # concept DOI (all versions); v1.0.0 = 10.5281/zenodo.20738162
 type: software
 version: "1.0.0"
 date-released: "2026-06-17"
