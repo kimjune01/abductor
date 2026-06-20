@@ -604,7 +604,9 @@ def _add_common(parser: argparse.ArgumentParser, *, suppress: bool) -> None:
     parser.add_argument("--pretty", action="store_true",
                         default=d if suppress else False, help="indent JSON output")
     parser.add_argument("--graph", default=d if suppress else DEFAULT_GRAPH,
-                        help="hypothesis-graph file (env ABDUCTOR_GRAPH)")
+                        help="hypothesis-graph file for graph/node/replay (env "
+                             "ABDUCTOR_GRAPH); gate and sketch are stateless and ignore it "
+                             "— wrap a gate in `node probe --trial` to record it")
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -630,7 +632,9 @@ def build_parser() -> argparse.ArgumentParser:
                    help="reference oracle = truth (file or -); enables diff-the-diff. "
                         "--truth is the base/foil; the candidate is scored against the "
                         "directional spec diff and a collapse code (11/12/13) names the axis "
-                        "it collapsed onto (wide/narrow/both)")
+                        "it collapsed onto (wide/narrow/both). The JSON adds per-axis case-IDs "
+                        "(over_wide, over_narrow, core_errors) and introduced_wide — the new "
+                        "false positives this candidate added (vs merely inherited from --truth)")
     g.add_argument("--sketches", action="store_true", help="inputs are IBLT sketches, not sets")
     g.add_argument("--cells", type=int, default=None, help="initial sketch size")
     g.set_defaults(func=cmd_gate)
