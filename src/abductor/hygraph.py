@@ -59,6 +59,8 @@ class Status(str, Enum):
     KILLED = "killed"
     WITNESSED = "witnessed"
     PRUNED = "pruned"
+    COLLAPSED = "collapsed"   # diff-the-diff: candidate collapsed onto one branch
+                              # (non-terminal — names a split, can link a successor)
 
 
 # Credence is capped by the mode that earned the belief: abduction proposes and
@@ -159,6 +161,21 @@ class HypothesisGraph:
         n.credence = 0.0
         return n
 
+    def collapse(self, node: Node | int, *, outcome: str) -> Node:
+        """Classify a node as a branch collapse (diff-the-diff).
+
+        A non-terminal verdict distinct from kill: the candidate is right on the
+        agreement core but collapsed onto one branch of a genuine spec divergence.
+        It is not refuted (the direction is the next move's signal), so it carries a
+        status of its own and, like a kill, can name a successor via ``from_kill``.
+        """
+        n = self.get(node)
+        _assert_open(n)
+        n.status = Status.COLLAPSED
+        n.outcome = outcome
+        n.credence = 0.0
+        return n
+
     def witness(self, node: Node | int, *, outcome: str, credence: float = 0.96) -> Node:
         """Classify a node as test-backed; credence rises, capped by its mode."""
         n = self.get(node)
@@ -180,8 +197,8 @@ class HypothesisGraph:
         graph extends itself with no external controller deciding where to look.
         """
         parent = self.get(dead)
-        if parent.status is not Status.KILLED:
-            raise ValueError("only a killed hypothesis can name a successor")
+        if parent.status not in (Status.KILLED, Status.COLLAPSED):
+            raise ValueError("only a killed or collapsed hypothesis can name a successor")
         return self.abduce(
             hypothesis, trial=trial, kill_if=kill_if, parent=parent, credence=credence
         )
@@ -305,6 +322,7 @@ class HypothesisGraph:
             Status.KILLED: "✗",
             Status.WITNESSED: "✓",
             Status.PRUNED: "·",
+            Status.COLLAPSED: "⋈",
         }
         lines = [f"# Inquiry: {self.observation}", ""]
         for n in self.nodes:

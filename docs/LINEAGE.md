@@ -10,7 +10,7 @@ A model told to "be general" or to "write its own tests" samples those tests fro
 
 - **Separation logic** — the substrate. Local reasoning about heap-manipulating programs: O'Hearn, Reynolds & Yang (2001); Reynolds (2002).
 - **Bi-abduction** — infer a missing antecedent and a leftover frame at once, `P * ?antiframe ⊢ Q * ?frame`: Calcagno, Distefano, O'Hearn & Yang (2009/2011), the engine behind Meta's Infer (Calcagno et al., 2015).
-- **Tri-abduction** — compose two branches with one shared antecedent and per-branch frames: Outcome Separation Logic (Zilberstein, Saliling & Silva, 2024, §5.1).
+- **Tri-abduction** — "a new type of inference" (their words) that synthesizes a single anti-frame `M` and two leftover frames `F1`, `F2` such that `M ⊨ P1 ∗ F1` and `M ⊨ P2 ∗ F2`: Outcome Separation Logic (Zilberstein, Saliling & Silva, 2024, §5.1). `abductor`'s `diff-the-diff` gate is the *checking analogue* of this synthesis — it borrows the two-distinct-leftover directional structure but does not infer the anti-frame, and its accept-set/heap correspondence is informal.
 - **Incorrectness reasoning** — under-approximate logic for *finding* bugs rather than proving their absence: Incorrectness Logic (O'Hearn 2020), Incorrectness Separation Logic (Raad et al. 2020), and its scaling to real codebases (Le et al. 2022).
 - **Counterexample-guided refinement (CEGAR)** — let a failing case drive the next abstraction: Clarke, Grumberg, Jha, Lu & Veith (2000).
 

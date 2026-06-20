@@ -114,10 +114,15 @@ the status code with no parsing and no model in the decision:
 | `3`  | graph or node not found |
 | `4`  | sketch too small to decode, or a replay did not reproduce |
 | `10` | **disagreement found** — a hypothesis killed |
+| `11` | **collapse_wide** — diff-the-diff: candidate sided with the base on the over-wide axis |
+| `12` | **collapse_narrow** — diff-the-diff: candidate sided with the base on the over-narrow axis |
+| `13` | **collapse_both** — diff-the-diff: candidate collapsed on both axes at once |
 
-`gate` returns `0` or `10`; that single bit drives `node witness` vs `node kill`,
-and `node probe` does both in one call. The table is itself machine-readable at
-`abductor codes --json`, so an agent never scrapes these docs to learn the verdicts.
+`gate` returns `0` or `10` (or a collapse code `11`/`12`/`13` with a second oracle,
+see *diff-the-diff* below); the `0`/`10` bit drives `node witness` vs `node kill`,
+a collapse code marks the node `collapsed`, and `node probe` does the bookkeeping in
+one call. The table is itself machine-readable at `abductor codes --json`, so an
+agent never scrapes these docs to learn the verdicts.
 
 ## The output contract (clig.dev, adapted)
 
@@ -157,10 +162,55 @@ two runs, a remote baseline — reconcile from those blobs alone, the full sets 
 meeting and never entering a context window. That is the regime the structure is
 for; on one local machine it is mostly future-proofing.
 
+## diff-the-diff (two oracles, a second-order check)
+
+A single XOR is **bi-abductive**: one candidate against one truth. It is blind to
+*branch* structure — a fix that must handle two cases identical on the surface but
+demanding opposite verdicts (a ghost-erased uninhabited return that must KEEP an
+edge vs. a genuine divergence that must PRUNE it: the same `!` token, opposite at
+the root). A bi-abductive gate scores a fix that handles one branch and silently
+drops the other as a pass.
+
+`gate --believe C --truth BASE --reference REF` is **diff-the-diff**: a
+*directional*, second-order symmetric-difference CHECK. It is the **checking analogue**
+of tri-abductive synthesis (Outcome Separation Logic §5.1; Zilberstein, Saliling &
+Silva 2024, `docs/LINEAGE.md:13`). It borrows OSL's two-distinct-leftover
+directional structure — the split that lets the verdict name *wide* vs *narrow* —
+but it does **not** implement the anti-frame inference (OSL synthesizes an anti-frame
+`M` and two leftover frames; diff-the-diff infers nothing), and the accept-set/heap
+correspondence is **informal**. diff-the-diff only *checks* a candidate against the
+divergence two oracles induce; it never synthesizes or discovers a branch point.
+
+The reference is **truth**; the base is the **foil**. First diff the spec and keep
+it directional (these axes are diff-the-diff's own sets, an informal analogy to —
+not — OSL's leftover frames):
+
+| over-wide axis (`BASE \ REF`) | over-narrow axis (`REF \ BASE`) |
+| --- | --- |
+| cases the base accepts, the reference rejects | cases the reference accepts, the base rejects |
+
+Then decompose the candidate's own error against truth, `Δ = C △ REF`, over the
+partition `{core, over-wide, over-narrow}` (the core is everywhere the two oracles
+agree):
+
+| `Δ` empty | `Δ` ⊆ over-wide | `Δ` ⊆ over-narrow | `Δ` hits both axes | `Δ` hits the core |
+| --- | --- | --- | --- | --- |
+| `pass` (0) | `collapse_wide` (11) | `collapse_narrow` (12) | `collapse_both` (13) | `disagree` (10) |
+
+The JSON names the `direction` (`wide`/`narrow`/`both`/`null`) and the offending
+case-IDs per axis: `over_wide` (Δ ∩ over-wide axis), `over_narrow`
+(Δ ∩ over-narrow axis), `core_errors`
+(Δ off both axes), with the directional spec diff under `spec_diff`
+(`over_wide_axis`, `over_narrow_axis`). A `provenance` block carries the exact argv
+and a resolved path + sha256 for the candidate and each oracle, so a stranger
+reconstructs and audits the verdict from the artifact alone. The tool only
+*decomposes*; the model conjectures the hidden branch feature that splits the two
+oracles. Without `--reference`, `gate` is exactly the single-oracle gate, unchanged.
+
 ## Command surface
 
 ```
-abductor gate     --believe SET --truth SET [--sketches] [--cells N]   # reconcile → verdict
+abductor gate     --believe SET --truth SET [--reference SET] [--sketches] [--cells N]  # reconcile → verdict
 abductor sketch   SET --cells N [--k 4] [--out FILE]                    # encode an O(d) sketch
 abductor graph    init OBSERVATION [--force] | show [--markdown]        # the smem the tool owns
 abductor node     probe HYP --trial CMD [--kill-if COND] [--from PARENT] # create + test + classify

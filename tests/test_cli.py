@@ -49,6 +49,137 @@ def test_gate_exit_codes_and_global_flag_position():
         assert code == cli.EXIT_OK
 
 
+# A both-directions spec divergence: each oracle accepts something the other
+# rejects. Reference is truth, base is the foil.  over-wide axis = BASE\REF = {4,16},
+# over-narrow axis = REF\BASE = {3,9}; agreement set (cases both oracles accept) =
+# {2,6,10,14,18}.
+BD_BASE = [2, 4, 6, 10, 14, 16, 18]
+BD_REF = [2, 3, 6, 9, 10, 14, 18]
+
+
+def test_diff_the_diff_directional_verdicts():
+    # diff-the-diff keeps the spec diff DIRECTIONAL and decomposes the candidate's
+    # error Δ = C △ REF against the partition {core, over-wide, over-narrow}: pass (Δ empty),
+    # disagree (Δ hits the agreement core), collapse_wide/narrow/both (Δ rides the
+    # over-wide / over-narrow / both axes). Truth is --reference; --truth is the foil.
+    with tempfile.TemporaryDirectory() as t:
+        base, ref = f"{t}/base.txt", f"{t}/ref.txt"
+        _write(base, BD_BASE)
+        _write(ref, BD_REF)
+
+        def ddd(accept):
+            p = f"{t}/cand.txt"
+            _write(p, accept)
+            return run(["gate", "--believe", p, "--truth", base, "--reference", ref, "--json"])
+
+        # spec diff is reported directionally and the same regardless of candidate
+        code, out = ddd(BD_REF)
+        d = json.loads(out)
+        assert code == cli.EXIT_OK and d["verdict"] == "pass" and d["pass"] is True
+        assert d["check"] == "diff-the-diff" and d["direction"] is None
+        assert d["spec_diff"] == {"over_wide_axis": [4, 16], "over_narrow_axis": [3, 9]}
+
+        # accepts a base-only case (4) -> collapse_wide on the over-wide axis
+        code, out = ddd(BD_REF + [4])
+        d = json.loads(out)
+        assert code == cli.EXIT_COLLAPSE_WIDE
+        assert d["verdict"] == "collapse_wide" and d["direction"] == "wide"
+        assert d["over_wide"] == [4] and d["over_narrow"] == [] and d["core_errors"] == []
+
+        # drops a reference-only case (3) -> collapse_narrow on the over-narrow axis
+        code, out = ddd([x for x in BD_REF if x != 3])
+        d = json.loads(out)
+        assert code == cli.EXIT_COLLAPSE_NARROW
+        assert d["verdict"] == "collapse_narrow" and d["over_narrow"] == [3]
+
+        # both axes at once: accept 4 (base-only) and drop 3 (reference-only)
+        code, out = ddd([x for x in BD_REF if x != 3] + [4])
+        d = json.loads(out)
+        assert code == cli.EXIT_COLLAPSE_BOTH
+        assert d["direction"] == "both" and d["over_wide"] == [4] and d["over_narrow"] == [3]
+
+        # wrong where the oracles AGREE (drops 2, a core case) -> plain disagree
+        code, out = ddd([x for x in BD_REF if x != 2])
+        d = json.loads(out)
+        assert code == cli.EXIT_DISAGREE
+        assert d["verdict"] == "disagree" and d["core_errors"] == [2]
+        assert d["over_wide"] == [] and d["over_narrow"] == []
+
+
+def test_diff_the_diff_provenance_present_and_stable():
+    with tempfile.TemporaryDirectory() as t:
+        base, ref, cand = f"{t}/base.txt", f"{t}/ref.txt", f"{t}/cand.txt"
+        _write(base, BD_BASE)
+        _write(ref, BD_REF)
+        _write(cand, BD_REF + [4])
+        argv = ["gate", "--believe", cand, "--truth", base, "--reference", ref, "--json"]
+        out1 = json.loads(run(argv)[1])
+        out2 = json.loads(run(argv)[1])
+        prov = out1["provenance"]
+        # all three roles fingerprinted with resolved path + sha256, plus exact argv
+        assert set(prov["inputs"]) == {"candidate", "base", "reference"}
+        assert prov["argv"] == ["abductor", *argv]
+        for role in ("candidate", "base", "reference"):
+            assert prov["inputs"][role]["path"].startswith("/")
+            assert len(prov["inputs"][role]["sha256"]) == 64
+        import hashlib
+        assert prov["inputs"]["candidate"]["sha256"] == \
+            hashlib.sha256(open(cand, "rb").read()).hexdigest()
+        # stable: same inputs -> byte-identical provenance
+        assert prov == out2["provenance"]
+
+
+def test_collapse_codes_are_published():
+    code, out = run(["codes", "--json"])
+    d = json.loads(out)
+    assert code == 0
+    assert d[str(cli.EXIT_COLLAPSE_WIDE)].startswith("collapse_wide")
+    assert d[str(cli.EXIT_COLLAPSE_NARROW)].startswith("collapse_narrow")
+    assert d[str(cli.EXIT_COLLAPSE_BOTH)].startswith("collapse_both")
+
+
+def test_node_probe_routes_a_collapse_as_collapsed_not_rc1():
+    # A diff-the-diff collapse is a NON-TERMINAL verdict: `node probe` must classify
+    # the node `collapsed` (carrying the direction) and return the collapse code, not
+    # swallow it as an rc-1 errored trial. This is the control-poka-yoke seam.
+    with tempfile.TemporaryDirectory() as t:
+        base, ref, cand = f"{t}/base.txt", f"{t}/ref.txt", f"{t}/cand.txt"
+        _write(base, BD_BASE)
+        _write(ref, BD_REF)
+        _write(cand, BD_REF + [4])  # collapse_wide
+        graph = f"{t}/g.json"
+        trial = (f"{PY} -m abductor gate --believe {cand} "
+                 f"--truth {base} --reference {ref}")
+        run(["graph", "init", "obs", "--graph", graph])
+        code, _ = run(["node", "probe", "wide fix", "--graph", graph, "--trial", trial])
+        assert code == cli.EXIT_COLLAPSE_WIDE      # routed on the collapse code, not rc1/error
+        g = json.loads(run(["graph", "show", "--graph", graph, "--json"])[1])
+        n = g["nodes"][0]
+        assert n["status"] == "collapsed" and n["expected_exit"] == cli.EXIT_COLLAPSE_WIDE
+        assert "collapse wide" in n["outcome"]
+        # idempotent re-probe returns the same recorded collapse code
+        code2, out2 = run(["node", "probe", "wide fix", "--graph", graph, "--trial", trial])
+        assert code2 == cli.EXIT_COLLAPSE_WIDE and json.loads(out2).get("idempotent") is True
+        # a collapsed node can name a successor (the agent re-enters by splitting)
+        code3, _ = run(["node", "probe", "split on square-ness", "--from", "0",
+                        "--graph", graph, "--trial", "exit 0"])
+        assert code3 == cli.EXIT_OK
+        g = json.loads(run(["graph", "show", "--graph", graph, "--json"])[1])
+        assert g["nodes"][1]["parent_id"] == 0 and g["nodes"][1]["status"] == "witnessed"
+
+
+def test_gate_single_oracle_output_unchanged_without_reference():
+    # The second-order path must not perturb the existing single-oracle contract.
+    with tempfile.TemporaryDirectory() as t:
+        believe, truth = f"{t}/b.txt", f"{t}/tr.txt"
+        _write(believe, [2, 4, 6])
+        _write(truth, [2, 4, 6, 8])
+        code, out = run(["gate", "--believe", believe, "--truth", truth, "--json"])
+        d = json.loads(out)
+        assert code == cli.EXIT_DISAGREE
+        assert "second_order" not in d and d["false_negatives"] == [8]
+
+
 def test_probe_records_expected_exit_and_replay_is_exact():
     with tempfile.TemporaryDirectory() as t:
         truth = f"{t}/truth.txt"
