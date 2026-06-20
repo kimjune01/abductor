@@ -107,6 +107,16 @@ def warn(msg: str) -> None:
     print(f"abductor: {msg}", file=sys.stderr)
 
 
+def _preview(items: list, n: int = 5) -> str:
+    """A human-line preview of a case-id list that never lies about magnitude:
+    the leading count is always shown, so a 5-item cap can't read as the whole set
+    (a `--human` row of `[1..5]` for an 80-element list is a 16x misread)."""
+    head = items[:n]
+    more = len(items) - len(head)
+    body = ", ".join(map(str, head)) + (f", +{more} more" if more > 0 else "")
+    return f"{len(items)}:[{body}]"
+
+
 def read_ints(path: str) -> set[int]:
     """Read a whitespace-separated set of integers from a file or '-' (stdin)."""
     text = sys.stdin.read() if path == "-" else open(path).read()
@@ -139,6 +149,14 @@ def _symdiff(args: argparse.Namespace, a, b):
 
 
 def cmd_gate(args: argparse.Namespace) -> int:
+    # Poka-yoke: gate is stateless (rule #1 — it reconciles, it never records). A
+    # `--graph` here is a no-op, and a silent one reads as "the verdict was logged"
+    # when nothing was. Say so, and name the command that does persist.
+    if "--graph" in getattr(args, "_argv", []):
+        warn("gate does not record to a graph; it only reconciles and exits a verdict. "
+             "To persist this trial as a node, wrap it: "
+             "`abductor node probe \"<hypothesis>\" --trial \"abductor gate ...\"`.")
+
     believe = _load_accept(args, args.believe)
     base_set = _load_accept(args, args.truth)
 
@@ -161,7 +179,7 @@ def cmd_gate(args: argparse.Namespace) -> int:
     if agree:
         human = "agree: 0 disagreements"
     else:
-        human = f"disagree: {data['delta']} cases  +{fp[:5]} -{fn[:5]}"
+        human = f"disagree: {data['delta']} cases  +{_preview(fp)} -{_preview(fn)}"
     emit(args, data, human)
     return EXIT_OK if agree else EXIT_DISAGREE
 
@@ -209,6 +227,11 @@ def _diff_the_diff(args: argparse.Namespace, believe, base_set, ref_set) -> int:
     over_wide = sorted(set(c_over) & base_only)    # C accepts a base-only case (sides wide)
     over_narrow = sorted(set(c_under) & ref_only)  # C drops a reference-only case (sides narrow)
     core_errors = sorted(delta - base_only - ref_only)  # error where base and reference agree
+    # The headline FP question for a LAYERED change: did the candidate ADD false
+    # positives, or only inherit the base's? introduced_wide = C \ REF \ BASE — accepts
+    # neither oracle wants, present in neither. It is the new-FP slice of core_errors
+    # (c_over off the base-only axis), so over_wide=N (inherited) can hide introduced=0.
+    introduced_wide = sorted(set(c_over) - base_only)
 
     if not delta:
         verdict, direction, rc = "pass", None, EXIT_OK
@@ -231,6 +254,7 @@ def _diff_the_diff(args: argparse.Namespace, believe, base_set, ref_set) -> int:
         "over_wide": over_wide,            # Δ ∩ base_only: base-only cases C wrongly accepts
         "over_narrow": over_narrow,        # Δ ∩ ref_only: reference-only cases C wrongly drops
         "core_errors": core_errors,        # Δ off both axes: wrong where the oracles agree
+        "introduced_wide": introduced_wide,  # C\REF\BASE: NEW false positives this change added
         "spec_diff": {                     # the directional diff of the two oracles
             "over_wide_axis": base_only_l,    # BASE \ REF
             "over_narrow_axis": ref_only_l,   # REF \ BASE
@@ -241,10 +265,12 @@ def _diff_the_diff(args: argparse.Namespace, believe, base_set, ref_set) -> int:
     if verdict == "pass":
         human = "pass: candidate matches the reference (truth)"
     elif verdict == "disagree":
-        human = f"disagree: {len(core_errors)} error(s) on the agreement core {core_errors[:5]}"
+        human = (f"disagree: {len(core_errors)} error(s) on the agreement core "
+                 f"{_preview(core_errors)} (introduced_wide={_preview(introduced_wide)})")
     else:
         human = (f"{verdict}: collapsed {direction}  "
-                 f"over_wide={over_wide[:5]} over_narrow={over_narrow[:5]}")
+                 f"over_wide={_preview(over_wide)} over_narrow={_preview(over_narrow)} "
+                 f"introduced_wide={_preview(introduced_wide)}")
     emit(args, data, human)
     return rc
 

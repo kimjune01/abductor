@@ -201,7 +201,12 @@ The JSON names the `direction` (`wide`/`narrow`/`both`/`null`) and the offending
 case-IDs per axis: `over_wide` (Δ ∩ over-wide axis), `over_narrow`
 (Δ ∩ over-narrow axis), `core_errors`
 (Δ off both axes), with the directional spec diff under `spec_diff`
-(`over_wide_axis`, `over_narrow_axis`). A `provenance` block carries the exact argv
+(`over_wide_axis`, `over_narrow_axis`). For a *layered* change, `introduced_wide`
+(= candidate \ reference \ base) isolates the false positives this change *added* —
+the new-FP slice of `core_errors`, distinct from over-acceptances merely inherited
+from the base (`over_wide`); an `introduced_wide` of `[]` says the change widened
+coverage without minting new false positives even when `over_wide` is nonzero. A
+`provenance` block carries the exact argv
 and a resolved path + sha256 for the candidate and each oracle, so a stranger
 reconstructs and audits the verdict from the artifact alone. The tool only
 *decomposes*; the model conjectures the hidden branch feature that splits the two
