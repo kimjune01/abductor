@@ -30,11 +30,12 @@ from __future__ import annotations
 
 import json
 import os
+import subprocess
 import tempfile
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
-from typing import Callable, Protocol
+from typing import Callable, Iterable, Protocol
 
 
 class GateLike(Protocol):
@@ -73,6 +74,31 @@ CREDENCE_CAP: dict[Mode, float] = {
 }
 
 
+# A diff-the-diff verdict -> the node status it earns. A collapse is non-terminal
+# (COLLAPSED can name a successor); a core error is a kill; matching truth witnesses.
+# This routes status only; the gate alone decides the verdict (see cli._diff_the_diff).
+BRANCH_VERDICT_STATUS: dict[str, Status] = {
+    "pass": Status.WITNESSED,
+    "disagree": Status.KILLED,
+    "collapse_wide": Status.COLLAPSED,
+    "collapse_narrow": Status.COLLAPSED,
+    "collapse_both": Status.COLLAPSED,
+}
+
+
+@dataclass
+class AxisOutcome:
+    """The offending case-IDs on one axis of a diff-the-diff check.
+
+    ``axis`` is one of ``over_wide`` (cases the candidate wrongly accepts, riding the
+    BASE\\REF axis), ``over_narrow`` (cases it wrongly drops, riding REF\\BASE), or
+    ``core`` (errors where the two oracles agree). ``cases`` are the exact IDs the
+    gate reported, so the node is auditable per axis, not just per verdict."""
+
+    axis: str
+    cases: list[int]
+
+
 @dataclass
 class Node:
     id: int
@@ -85,6 +111,12 @@ class Node:
     outcome: str | None = None
     parent_id: int | None = None
     expected_exit: int | None = None  # exit code that defines reproduction (set by probe)
+    # diff-the-diff branch structure — set only for a second-order check, None otherwise.
+    # ``verdict`` is the directional verdict as a first-class, queryable field (never
+    # parsed back out of the free-text ``outcome``); ``axes`` carries the per-axis
+    # offending case-IDs the gate reported.
+    verdict: str | None = None
+    axes: list[AxisOutcome] | None = None
 
     def cap(self, value: float) -> float:
         return min(value, CREDENCE_CAP[self.mode])
@@ -176,6 +208,88 @@ class HypothesisGraph:
         n.credence = 0.0
         return n
 
+    def annotate_branch(
+        self,
+        node: Node | int,
+        *,
+        verdict: str,
+        expected_exit: int | None = None,
+        over_wide: Iterable[int] = (),
+        over_narrow: Iterable[int] = (),
+        core: Iterable[int] = (),
+    ) -> Node:
+        """Attach diff-the-diff branch structure to an already-classified node.
+
+        The verdict and the per-axis offending case-IDs become first-class, queryable
+        fields on the node — the directional signal is *not* buried in the free-text
+        ``outcome``. Used by the CLI's ``node probe`` to enrich a node it has already
+        classified (witnessed / killed / collapsed) with the structure the gate
+        reported, so the recorded node is auditable per axis. Status is untouched here;
+        only the gate decides the verdict and only the classifiers set the status."""
+        n = self.get(node)
+        n.verdict = verdict
+        if expected_exit is not None:
+            n.expected_exit = expected_exit
+        axes = [
+            AxisOutcome(name, list(cases))
+            for name, cases in (
+                ("over_wide", over_wide),
+                ("over_narrow", over_narrow),
+                ("core", core),
+            )
+            if list(cases)
+        ]
+        n.axes = axes or None
+        return n
+
+    def branch(
+        self,
+        hypothesis: str,
+        *,
+        trial: str,
+        verdict: str,
+        expected_exit: int,
+        over_wide: Iterable[int] = (),
+        over_narrow: Iterable[int] = (),
+        core: Iterable[int] = (),
+        parent: Node | int | None = None,
+        credence: float = 0.5,
+        kill_if: str = "the candidate's error Δ rides the over-wide or over-narrow axis",
+        replay: Callable[[], object] | None = None,
+    ) -> Node:
+        """Record a diff-the-diff check as one replayable branch node, in one call.
+
+        Appends the hypothesis, classifies it by the gate's directional ``verdict``
+        (pass -> witnessed, disagree -> killed, collapse_* -> collapsed), and attaches
+        the directional structure (``verdict`` + per-axis case-IDs). The node satisfies
+        the replay invariant: it stores a thunk that re-runs the recorded ``trial`` (the
+        exact ``gate --reference`` command) and the exit code it must reproduce, so a
+        stranger reconstructs the verdict by re-running the trial — ``replay()`` returns
+        a match iff the recorded exit comes back. The thunk is overridable for tests."""
+        status = BRANCH_VERDICT_STATUS.get(verdict)
+        if status is None:
+            raise ValueError(
+                f"unknown diff-the-diff verdict {verdict!r}; "
+                f"expected one of {sorted(BRANCH_VERDICT_STATUS)}"
+            )
+        node = self.abduce(
+            hypothesis, trial=trial, kill_if=kill_if, parent=parent, credence=credence
+        )
+        outcome = f"diff-the-diff: {verdict} (exit {expected_exit})"
+        if status is Status.WITNESSED:
+            self.witness(node, outcome=outcome)
+        elif status is Status.KILLED:
+            self.kill(node, outcome=outcome)
+        else:
+            self.collapse(node, outcome=outcome)
+        self.annotate_branch(
+            node, verdict=verdict, expected_exit=expected_exit,
+            over_wide=over_wide, over_narrow=over_narrow, core=core,
+        )
+        self._replay[node.id] = replay or (lambda t=trial: _exit_of(t))
+        self._recorded[node.id] = expected_exit
+        return node
+
     def witness(self, node: Node | int, *, outcome: str, credence: float = 0.96) -> Node:
         """Classify a node as test-backed; credence rises, capped by its mode."""
         n = self.get(node)
@@ -264,6 +378,9 @@ class HypothesisGraph:
                     "outcome": n.outcome,
                     "parent_id": n.parent_id,
                     "expected_exit": n.expected_exit,
+                    "verdict": n.verdict,
+                    "axes": None if n.axes is None
+                    else [{"axis": a.axis, "cases": a.cases} for a in n.axes],
                 }
                 for n in self.nodes
             ],
@@ -285,6 +402,9 @@ class HypothesisGraph:
                     outcome=nd["outcome"],
                     parent_id=nd["parent_id"],
                     expected_exit=nd.get("expected_exit"),
+                    verdict=nd.get("verdict"),
+                    axes=None if nd.get("axes") is None
+                    else [AxisOutcome(a["axis"], a["cases"]) for a in nd["axes"]],
                 )
             )
         return g
@@ -336,9 +456,25 @@ class HypothesisGraph:
                 f"- trial: `{n.trial}`",
                 f"- kill if: {n.kill_if}",
                 f"- outcome: {n.outcome or '(untested)'}",
-                "",
             ]
+            if n.verdict is not None:
+                # The directional verdict and which axis it collapsed onto — the audit
+                # surface shows *why* a wide-but-broken fix died, not just that it did.
+                lines.append(f"- diff-the-diff verdict: {n.verdict}")
+                for a in n.axes or []:
+                    lines.append(f"  - {a.axis}: {a.cases}")
+            lines.append("")
         return "\n".join(lines)
+
+
+def _exit_of(trial: str) -> int:
+    """Re-run a recorded trial command and return its exit code. The default replay
+    thunk for a branch node: a stranger reconstructs the verdict by re-running the
+    exact ``gate --reference`` command, and ``replay()`` checks the recorded exit
+    comes back. Trials may use process substitution ``<(...)``, so run under bash."""
+    return subprocess.run(  # noqa: S602  (the trial is the node's own recorded command)
+        trial, shell=True, executable="/bin/bash", capture_output=True, text=True
+    ).returncode
 
 
 def _id_of(node: Node | int | None) -> int | None:

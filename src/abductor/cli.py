@@ -428,6 +428,25 @@ def _run_trial(trial: str) -> subprocess.CompletedProcess:
     return subprocess.run(trial, shell=True, executable=BASH, capture_output=True, text=True)
 
 
+def _branch_fields(stdout: str) -> dict | None:
+    """If the trial was a diff-the-diff gate, pull its directional structure out of the
+    stdout JSON so the node can record it. Returns None for any other trial (plain
+    gate, `exit 0`, non-JSON), so single-oracle nodes are untouched. The verdict logic
+    stays in the gate; this only relays what the gate already decided."""
+    try:
+        d = json.loads(stdout)
+    except (json.JSONDecodeError, ValueError):
+        return None
+    if not isinstance(d, dict) or d.get("check") != "diff-the-diff":
+        return None
+    return {
+        "verdict": d["verdict"],
+        "over_wide": d.get("over_wide", []),
+        "over_narrow": d.get("over_narrow", []),
+        "core": d.get("core_errors", []),
+    }
+
+
 def cmd_node_probe(args: argparse.Namespace) -> int:
     """Append a hypothesis, run its trial, and classify by the trial's exit code.
 
@@ -486,6 +505,13 @@ def cmd_node_probe(args: argparse.Namespace) -> int:
         node.expected_exit = rc
     else:
         node.outcome = f"trial errored (exit {rc}); left open"
+    # If the trial was a diff-the-diff gate, record its directional structure on the
+    # node (verdict + per-axis offending case-IDs) so the branch-composition reasoning
+    # is emitted as a queryable, replayable node — not a trust-me log line.
+    branch = _branch_fields(proc.stdout)
+    if branch is not None:
+        g.annotate_branch(node, verdict=branch["verdict"], over_wide=branch["over_wide"],
+                          over_narrow=branch["over_narrow"], core=branch["core"])
     g.save(args.graph)
     result = _node_dict(g, node)
     result["exit_code"] = rc

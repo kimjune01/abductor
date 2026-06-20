@@ -273,6 +273,66 @@ def test_save_is_atomic_and_writes_audit_copy():
         json.loads(open(graph).read())                          # json is valid (not truncated)
 
 
+def test_hygraph_branch_node_records_direction_axes_and_replays():
+    # The hygraph branch-node format: a diff-the-diff check is recordable as ONE
+    # replayable node carrying the directional verdict + per-axis offending case-IDs.
+    from abductor.hygraph import AxisOutcome, HypothesisGraph, Status
+
+    g = HypothesisGraph(observation="surface-twins demand opposite verdicts")
+    node = g.branch(
+        "fix conditioned on the wrong feature",
+        trial="exit 11",                      # stands in for a `gate --reference` run
+        verdict="collapse_wide",
+        expected_exit=11,
+        over_wide=[4, 16],                    # base-only cases the candidate wrongly keeps
+        core=[],
+    )
+    # direction is a first-class, queryable field (not parsed out of free text)
+    assert node.verdict == "collapse_wide"
+    assert node.status is Status.COLLAPSED and node.expected_exit == 11
+    assert node.axes == [AxisOutcome("over_wide", [4, 16])]
+
+    # replay invariant: re-run the recorded trial, reproduce the same exit
+    matches, recorded, replayed = g.replay(node)
+    assert matches and recorded == 11 and replayed == 11
+
+    # the structure survives a save/load round-trip (backward-compatible passthrough)
+    d = HypothesisGraph.from_dict(g.to_dict())
+    rn = d.nodes[0]
+    assert rn.verdict == "collapse_wide" and rn.axes == [AxisOutcome("over_wide", [4, 16])]
+    # and renders into the audit surface
+    md = g.to_markdown()
+    assert "diff-the-diff verdict: collapse_wide" in md and "over_wide: [4, 16]" in md
+
+    # a collapsed branch node is non-terminal: it can name a successor
+    succ = g.from_kill(node, "split on perfect-square-ness",
+                       trial="exit 0", kill_if="any")
+    assert succ.parent_id == node.id
+
+
+def test_node_probe_emits_branch_node_with_axes_and_replays():
+    # End-to-end: `node probe` over a diff-the-diff gate emits a node that records the
+    # verdict + per-axis case-IDs, and `replay` reproduces the same collapse exit.
+    with tempfile.TemporaryDirectory() as t:
+        base, ref, cand = f"{t}/base.txt", f"{t}/ref.txt", f"{t}/cand.txt"
+        _write(base, BD_BASE)
+        _write(ref, BD_REF)
+        _write(cand, BD_REF + [4])  # collapse_wide on {4}
+        graph = f"{t}/g.json"
+        trial = (f"{PY} -m abductor gate --believe {cand} "
+                 f"--truth {base} --reference {ref}")
+        run(["graph", "init", "obs", "--graph", graph])
+        code, _ = run(["node", "probe", "wide fix", "--graph", graph, "--trial", trial])
+        assert code == cli.EXIT_COLLAPSE_WIDE
+        n = json.loads(run(["graph", "show", "--graph", graph, "--json"])[1])["nodes"][0]
+        assert n["verdict"] == "collapse_wide"
+        assert n["axes"] == [{"axis": "over_wide", "cases": [4]}]
+        # the recorded branch node replays to the same collapse exit
+        code, out = run(["replay", "0", "--graph", graph, "--json"])
+        assert code == cli.EXIT_OK and json.loads(out)["reproduces"] is True
+        assert json.loads(out)["exit_code"] == cli.EXIT_COLLAPSE_WIDE
+
+
 if __name__ == "__main__":
     fns = [v for k, v in sorted(globals().items()) if k.startswith("test_") and callable(v)]
     failed = 0
