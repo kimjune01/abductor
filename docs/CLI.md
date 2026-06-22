@@ -215,7 +215,7 @@ oracles. Without `--reference`, `gate` is exactly the single-oracle gate, unchan
 ## Command surface
 
 ```
-abductor gate     --believe SET --truth SET [--reference SET] [--sketches] [--cells N]  # reconcile → verdict
+abductor gate     --believe SET --truth SET [--reference SET] [--out-delta F --field FIELD] [--sketches]  # reconcile → verdict (+ write the disagreement)
 abductor sketch   SET --cells N [--k 4] [--out FILE]                    # encode an O(d) sketch
 abductor graph    init OBSERVATION [--force] | show [--markdown]        # the smem the tool owns
 abductor node     probe HYP --trial CMD [--kill-if COND] [--from PARENT] # create + test + classify

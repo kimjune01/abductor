@@ -35,6 +35,25 @@ def test_codes_is_machine_readable():
     assert code == 0 and d["10"].startswith("disagree") and d["0"].startswith("ok")
 
 
+def test_gate_out_delta_writes_directional_slice():
+    with tempfile.TemporaryDirectory() as t:
+        truth, believe, delta = f"{t}/truth.txt", f"{t}/bel.txt", f"{t}/delta.txt"
+        _write(truth, [4, 8, 12, 400])          # the reference
+        _write(believe, [4, 8, 12, 100, 400])   # adds 100 (a false positive), drops nothing
+        code, out = run(["gate", "--believe", believe, "--truth", truth,
+                         "--out-delta", delta, "--field", "false_positives", "--json"])
+        d = json.loads(out)
+        assert code == cli.EXIT_DISAGREE
+        assert d["out_delta"] == {"path": delta, "field": "false_positives", "count": 1}
+        assert open(delta).read().split() == ["100"]
+        run(["gate", "--believe", believe, "--truth", truth,
+             "--out-delta", delta, "--field", "false_negatives"])
+        assert open(delta).read().split() == []          # truth has nothing believe lacks
+        run(["gate", "--believe", believe, "--truth", truth,
+             "--out-delta", delta, "--field", "all"])
+        assert open(delta).read().split() == ["100"]      # union == the one fp
+
+
 def test_gate_exit_codes_and_global_flag_position():
     with tempfile.TemporaryDirectory() as t:
         truth, patch = f"{t}/truth.txt", f"{t}/patch.txt"

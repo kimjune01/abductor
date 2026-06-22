@@ -162,6 +162,9 @@ def cmd_gate(args: argparse.Namespace) -> int:
     base_set = _load_accept(args, args.truth)
 
     if args.reference is not None:
+        if getattr(args, "out_delta", None):
+            warn("--out-delta is not supported with --reference (diff-the-diff); "
+                 "it writes the single-oracle disagreement only.")
         return _diff_the_diff(args, believe, base_set, _load_accept(args, args.reference))
 
     fp, fn, decoded = _symdiff(args, believe, base_set)
@@ -177,6 +180,17 @@ def cmd_gate(args: argparse.Namespace) -> int:
         "false_negatives": fn,   # oracle says accept, candidate missed
         "decoded": True,
     }
+    # Emit the disagreement as a file artifact the next primitive consumes. gate
+    # already decomposed the symmetric difference; --field picks the directional
+    # slice (the symmetric difference is direction-blind, so feeding `gate` itself
+    # into `reduce` can minimize to the empty set — write the directional delta and
+    # reduce *that* instead). Stays composable: gate emits, reduce minimizes.
+    if getattr(args, "out_delta", None):
+        sel = {"all": sorted(set(fp) | set(fn)),
+               "false_positives": fp, "false_negatives": fn}[args.field]
+        with open(args.out_delta, "w") as f:
+            f.write(" ".join(str(c) for c in sel) + ("\n" if sel else ""))
+        data["out_delta"] = {"path": args.out_delta, "field": args.field, "count": len(sel)}
     if agree:
         human = "agree: 0 disagreements"
     else:
@@ -688,6 +702,14 @@ def build_parser() -> argparse.ArgumentParser:
                         "false positives this candidate added (vs merely inherited from --truth)")
     g.add_argument("--sketches", action="store_true", help="inputs are IBLT sketches, not sets")
     g.add_argument("--cells", type=int, default=None, help="initial sketch size")
+    g.add_argument("--out-delta", dest="out_delta", default=None,
+                   help="write the disagreement to a file (whitespace-separated ids), "
+                        "ready to pipe into `reduce`; single-oracle only")
+    g.add_argument("--field", choices=["all", "false_positives", "false_negatives"],
+                   default="all",
+                   help="which directional slice --out-delta writes (default all). "
+                        "Use false_positives to avoid `reduce` minimizing to empty on the "
+                        "direction-blind symmetric difference")
     g.set_defaults(func=cmd_gate)
 
     s = sub.add_parser("sketch", parents=[common], help="encode a set into an O(cells) sketch")
@@ -712,7 +734,9 @@ def build_parser() -> argparse.ArgumentParser:
     na = ns.add_parser("add", parents=[common], help="append a hypothesis (create / link)")
     na.add_argument("hypothesis")
     na.add_argument("--trial", required=True, help="the exact command that tests it")
-    na.add_argument("--kill-if", required=True, dest="kill_if", help="the refuting condition")
+    na.add_argument("--kill-if", required=True, dest="kill_if",
+                    help="free-text note for what would refute it (e.g. \"any\"); the actual "
+                         "verdict is the trial's exit code (0 witness, 10 kill), not this label")
     na.add_argument("--from", type=int, default=None, dest="from_node",
                     help="parent node id; the parent must be killed (generate-edge-from-kill)")
     na.add_argument("--mode", default="abduction",
@@ -727,7 +751,9 @@ def build_parser() -> argparse.ArgumentParser:
                      help="the exact command that tests it (exit 0 witnesses, 10 kills, a "
                      "diff-the-diff collapse code 11/12/13 marks it collapsed); its stdout is "
                      "returned as trial_stdout, so no separate gate run is needed")
-    npb.add_argument("--kill-if", dest="kill_if", default="trial reports a disagreement (exit 10)",
+    npb.add_argument("--kill-if", dest="kill_if",
+                     # free-text label; the trial's exit code is the real verdict
+                     default="trial reports a disagreement (exit 10)",
                      help="the refuting condition (default: the trial exits 10)")
     npb.add_argument("--from", type=int, default=None, dest="from_node",
                      help="parent node id; the parent must be killed")
@@ -756,11 +782,16 @@ def build_parser() -> argparse.ArgumentParser:
     rd.add_argument("infile", help="the input to minimize (file or -)")
     rd.add_argument("--trial", required=True,
                     help="predicate command; '{}' is replaced by the candidate's "
-                         "temp-file path, else the candidate is fed on stdin")
+                         "temp-file path, else the candidate is fed on stdin. Use a "
+                         "DIRECTIONAL predicate: a symmetric one (e.g. `gate` itself) is "
+                         "satisfied by the empty input and minimizes to nothing. To shrink a "
+                         "gate disagreement, write it with `gate --out-delta --field "
+                         "false_positives` and reduce that file")
     rd.add_argument("--expect", type=int, default=EXIT_DISAGREE,
                     help="exit code meaning 'still interesting' (default 10, a disagreement)")
     rd.add_argument("--unit", choices=["line", "token", "char"], default="line",
-                    help="minimization granularity (default line)")
+                    help="minimization granularity (default line; use token for a "
+                         "whitespace-separated set/accept-set, char for fine structure)")
     rd.add_argument("--timeout", type=float, default=None,
                     help="per-trial timeout in seconds; a timed-out trial counts as "
                          "not-interesting (default: no timeout)")
