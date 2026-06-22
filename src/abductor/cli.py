@@ -27,6 +27,7 @@ import sys
 
 from abductor.hygraph import HypothesisGraph, Mode, Status
 from abductor.iblt import IBLT, reconcile, reconcile_sketches, sketch
+from abductor.reduce import join_units, reduce_input, split_units
 
 # Exit codes — the verdict an agent routes on.
 EXIT_OK = 0          # success / agreement (a hypothesis witnessed)
@@ -583,6 +584,35 @@ def cmd_replay(args: argparse.Namespace) -> int:
     return EXIT_OK if reproduces else EXIT_UNDECODED
 
 
+def cmd_reduce(args: argparse.Namespace) -> int:
+    # Stateless mechanism (rule #1): shrink an input while a handed predicate holds;
+    # it never decides what the witness means. No graph touched.
+    text = sys.stdin.read() if args.infile == "-" else open(args.infile).read()
+    minimal, evals = reduce_input(text, args.trial, args.expect, args.unit)
+    if minimal is None:
+        warn(f"input does not reproduce: the trial did not exit {args.expect} on the "
+             f"full input, so there is no witness to minimize.")
+        return EXIT_ERROR
+    out_text = join_units(minimal, args.unit)
+    if args.out:
+        with open(args.out, "w") as f:
+            f.write(out_text)
+    orig = len(split_units(text, args.unit))
+    data = {
+        "reduced": True,
+        "unit": args.unit,
+        "expect": args.expect,
+        "original_units": orig,
+        "minimal_units": len(minimal),
+        "evals": evals,
+        "minimal": out_text,
+    }
+    human = (f"reduced {orig} -> {len(minimal)} {args.unit} ({evals} trials)\n"
+             f"{out_text}")
+    emit(args, data, human)
+    return EXIT_OK
+
+
 def cmd_codes(args: argparse.Namespace) -> int:
     data = {str(code): desc for code, desc in sorted(EXIT_CODES.items())}
     human = "\n".join(f"{code:>3}  {desc}" for code, desc in sorted(EXIT_CODES.items()))
@@ -699,6 +729,19 @@ def build_parser() -> argparse.ArgumentParser:
                        help="re-run a node's recorded trial and check it reproduces")
     r.add_argument("id", type=int)
     r.set_defaults(func=cmd_replay)
+
+    rd = sub.add_parser("reduce", parents=[common],
+                        help="ddmin: shrink a divergent input to a minimal witness")
+    rd.add_argument("infile", help="the input to minimize (file or -)")
+    rd.add_argument("--trial", required=True,
+                    help="predicate command; '{}' is replaced by the candidate's "
+                         "temp-file path, else the candidate is fed on stdin")
+    rd.add_argument("--expect", type=int, default=EXIT_DISAGREE,
+                    help="exit code meaning 'still interesting' (default 10, a disagreement)")
+    rd.add_argument("--unit", choices=["line", "token", "char"], default="line",
+                    help="minimization granularity (default line)")
+    rd.add_argument("--out", help="write the minimal witness here (also in JSON 'minimal')")
+    rd.set_defaults(func=cmd_reduce)
 
     c = sub.add_parser("codes", parents=[common], help="print the exit-code verdict table")
     c.set_defaults(func=cmd_codes)

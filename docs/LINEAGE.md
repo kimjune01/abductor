@@ -52,3 +52,65 @@ The gate computes a symmetric difference (an XOR) between *what the tool believe
 - M. Strathern (1997). *'Improving ratings': audit in the British University system.* European Review 5(3):305–321.
 - P. C. Wason (1960). *On the failure to eliminate hypotheses in a conceptual task.* Quarterly Journal of Experimental Psychology 12(3):129–140.
 - J. Kim. *The Hypothesis Graph; Evidence has a trajectory; Modes of Reason; Blind, Blind, Merge.* june.kim.
+
+## Candidate lineage — maybes (unvetted)
+
+Surfaced 2026-06-21 by an adversarial novelty fan-out over the soundness-gate application
+(`enzyme-soundness-gate`). These are the *empirical software-engineering* ancestors and neighbours
+of the gate, complementing the logic/statistics lineage above. Listed as candidates to vet before
+promotion: each is real prior art, but its exact relationship to `abductor` (descends-from vs
+empirical-precedent vs complementary-pole vs names-the-open-problem) still needs an author call.
+
+- **Oracle-guided synthesis** *(lineage)* — the distinguishing-input → oracle-query loop: a minimal
+  input on which two consistent hypotheses disagree, used to drive a query that elicits intent.
+  This is the *synthesis-side* ancestor of the gate; `abductor` is its checking-side analogue (cf.
+  the `diff-the-diff` note above). Jha, Gulwani, Seshia & Tiwari (2010), ICSE (Most Influential
+  Paper).
+- **Dynamic invariant detection** *(lineage)* — induction from observed executions to a likely
+  invariant: the witness → property step a generalizer would mechanize. `abductor` would drive it
+  from *externalized adversarial cases*, not passive runtime traces. Ernst et al., Daikon (SCP
+  2007).
+- **Test amplification** *(lineage)* — generalize a developer's existing test by mutating its
+  inputs and synthesizing assertions. `abductor`'s per-rule input generalization adds
+  rule-conditioned semantic axis selection (sign/tie/inf-nan/denormal) and a value+gradient oracle.
+  Danglot, Vera-Pérez, Baudry & Monperrus, DSpot (EMSE 2019).
+- **Differential AD testing** *(empirical precedent)* — differential testing of gradients across
+  AD modes; 173 confirmed bugs, and a numerical false-positive filter that independently motivates
+  the residue rubric (`abductor` *types* what this *drops*). Tests primitives, not optimize-then-AD
+  compositions. Yang et al., NablaFuzz (ICSE 2023).
+- **Rewrite verification** *(complementary pole)* — SMT proof that a peephole rewrite preserves
+  semantics, incl. floating-point (signed zero, NaN, inf, denormal). The *verification* pole;
+  `abductor` is the *testing* pole for transforms outside the decidable fragment (interprocedural
+  differentiate-after-optimize). Lopes, Lee, Hur, Liu & Regehr, Alive2 (PLDI 2021); Menendez,
+  Nagarakatte & Gupta, Alive-FP (SAS 2016); Nötzli & Brown, LifeJacket (2016, a precise-FP Alive
+  fork — distinct from Alive-FP).
+- **DL/tensor-compiler fuzzing** *(neighbouring field)* — optimization-soundness testing of tensor
+  compilers, on forward/inference value equivalence; `abductor` would extend it to the backward
+  pass. Liu et al., NNSmith (ASPLOS 2023); Tzer (OOPSLA/PACMPL 2022); MT-DLComp, *Metamorphic
+  Testing of Deep Learning Compilers* (POMACS / SIGMETRICS 2022).
+- **N-version with coding agents** *(names the open problem)* — finds that co-occurring faults in
+  agent-generated versions trace to *specification ambiguity*, and closes with: "study how to use
+  the correlated faults to detect and refine ambiguous specifications in an automated manner."
+  `abductor`'s residue typing (tie / fast-math = genuine spec ambiguity) localizes what this only
+  flags. Ron, Baudry & Monperrus (2026), arXiv:2606.20158.
+- **Compiler-testing survey** *(names the open problem)* — §8 lists "test oracles beyond
+  equivalence relations" among the open challenges; a gradient-preservation oracle is exactly a
+  non-equivalence oracle sitting in that gap. Chen, Patra, Pradel, Xiong, Zhang, Hao & Zhang,
+  *A Survey of Compiler Testing*, ACM Computing Surveys (2020).
+
+- **Metamorphic testing** *(oracle construction without an exact oracle)* — when no reference
+  exists, assert relations the output must satisfy under input transformations. The ancestor of the
+  residue rubric's "this transform should preserve the verdict." Chen, Cheung & Yiu (1998); Segura
+  et al. survey (2016).
+- **Equivalence Modulo Inputs (EMI)** *(closest compiler-testing neighbour)* — mutate code that
+  doesn't execute on a given input and require identical output; closer to `abductor`'s compiler
+  gate than generic DL fuzzing. Le, Afshari & Su, PLDI 2014.
+- **Delta debugging / C-Reduce** *(counterexample minimization)* — shrink a failing input to a
+  minimal witness before handing it to abduction; a missing-but-central capability (see borrow
+  list). Zeller & Hildebrandt (2002); Regehr et al., C-Reduce, PLDI 2012.
+- **Translation validation** *(the verification frame Alive2 instantiates)* — prove a single
+  compilation/transform instance correct rather than the compiler; name it explicitly, it is
+  central not incidental. Pnueli, Siegel & Singerman (1998).
+- **Property-based testing** *(generators + shrinking + executable properties)* — relevant only if
+  `abductor` grows input generators rather than only reconciling given accept-sets. Claessen &
+  Hughes, QuickCheck (2000).

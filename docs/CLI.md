@@ -223,6 +223,7 @@ abductor node     probe HYP --trial CMD [--kill-if COND] [--from PARENT] # creat
                   kill  ID --outcome TEXT                               # update (refuted)
                   witness ID --outcome TEXT [--credence F]              # update (test-backed)
                   prune ID                                              # delete from frontier
+abductor reduce   INFILE --trial CMD [--expect N] [--unit U] [--out F]  # ddmin a divergent input to a 1-minimal witness
 abductor replay   ID                                                    # re-run trial, check exact exit
 abductor codes                                                         # the exit-code verdict table
 ```
