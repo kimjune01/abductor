@@ -587,16 +587,37 @@ def cmd_replay(args: argparse.Namespace) -> int:
 def cmd_reduce(args: argparse.Namespace) -> int:
     # Stateless mechanism (rule #1): shrink an input while a handed predicate holds;
     # it never decides what the witness means. No graph touched.
-    text = sys.stdin.read() if args.infile == "-" else open(args.infile).read()
-    minimal, evals = reduce_input(text, args.trial, args.expect, args.unit)
-    if minimal is None:
-        warn(f"input does not reproduce: the trial did not exit {args.expect} on the "
-             f"full input, so there is no witness to minimize.")
+    if args.infile == "-":
+        text = sys.stdin.read()
+    else:
+        with open(args.infile) as f:
+            text = f.read()
+    res = reduce_input(text, args.trial, args.expect, args.unit, timeout=args.timeout)
+    if res["minimal"] is None:
+        code = res["full_code"]
+        if code is None:
+            warn(f"the --trial timed out (over {args.timeout}s) on the full input; "
+                 f"reduce cannot start. Raise --timeout or fix a hanging trial.")
+        elif code in (126, 127):
+            warn(f"the --trial command failed to run (exit {code}: "
+                 f"{'not executable' if code == 126 else 'command not found'}). "
+                 f"Check the command and that '{{}}' (if used) is the input path.")
+        else:
+            warn(f"input does not reproduce: the trial exited {code} on the full input, "
+                 f"but --expect is {args.expect}; there is no witness to minimize.")
         return EXIT_ERROR
+    minimal = res["minimal"]
     out_text = join_units(minimal, args.unit)
     if args.out:
         with open(args.out, "w") as f:
             f.write(out_text)
+    if res["broken"]:
+        warn(f"the --trial failed to run (exit 126/127) on {res['broken']} smaller "
+             f"candidate(s) during reduction; the witness may be larger than minimal "
+             f"because a broken trial, not the predicate, blocked those reductions.")
+    if out_text == "" or out_text.isspace():
+        warn("the minimal witness is empty or whitespace-only: the predicate may "
+             "accept trivial input (re-check --expect and the trial).")
     orig = len(split_units(text, args.unit))
     data = {
         "reduced": True,
@@ -604,10 +625,10 @@ def cmd_reduce(args: argparse.Namespace) -> int:
         "expect": args.expect,
         "original_units": orig,
         "minimal_units": len(minimal),
-        "evals": evals,
+        "evals": res["evals"],
         "minimal": out_text,
     }
-    human = (f"reduced {orig} -> {len(minimal)} {args.unit} ({evals} trials)\n"
+    human = (f"reduced {orig} -> {len(minimal)} {args.unit} ({res['evals']} trials)\n"
              f"{out_text}")
     emit(args, data, human)
     return EXIT_OK
@@ -740,6 +761,9 @@ def build_parser() -> argparse.ArgumentParser:
                     help="exit code meaning 'still interesting' (default 10, a disagreement)")
     rd.add_argument("--unit", choices=["line", "token", "char"], default="line",
                     help="minimization granularity (default line)")
+    rd.add_argument("--timeout", type=float, default=None,
+                    help="per-trial timeout in seconds; a timed-out trial counts as "
+                         "not-interesting (default: no timeout)")
     rd.add_argument("--out", help="write the minimal witness here (also in JSON 'minimal')")
     rd.set_defaults(func=cmd_reduce)
 

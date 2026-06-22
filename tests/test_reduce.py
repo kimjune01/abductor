@@ -20,6 +20,15 @@ def run(argv: list[str]) -> tuple[int, str]:
     return code, buf.getvalue()
 
 
+def run_err(argv: list[str]) -> tuple[int, str]:
+    """Run capturing stderr (where instructive failure messages go)."""
+    from contextlib import redirect_stderr
+    out, err = io.StringIO(), io.StringIO()
+    with redirect_stdout(out), redirect_stderr(err):
+        code = cli.main(argv)
+    return code, err.getvalue()
+
+
 def test_reduce_to_single_interesting_line():
     # Predicate: candidate still contains the line BAD (grep exit 0 = interesting).
     # ddmin should peel a 6-line input down to just BAD.
@@ -92,6 +101,68 @@ def test_reduce_is_1_minimal_with_two_required_units():
         d = json.loads(out)
         assert code == cli.EXIT_OK
         assert d["minimal"] == "A\nB" and d["minimal_units"] == 2
+
+
+def test_reduce_surfaces_exit_code_when_not_reproducing():
+    # Trial exits 3 on the full input; --expect 10. Message must name the real code.
+    with tempfile.TemporaryDirectory() as t:
+        src = f"{t}/in.txt"
+        with open(src, "w") as f:
+            f.write("a\nb\nc")
+        code, err = run_err([
+            "reduce", src, "--trial", "exit 3", "--expect", "10"])
+        assert code == cli.EXIT_ERROR
+        assert "exited 3" in err and "does not reproduce" in err
+
+
+def test_reduce_detects_a_broken_trial():
+    # A command-not-found trial (exit 127) must be reported as broken, not as
+    # "does not reproduce" (the classic delta-debugging footgun).
+    with tempfile.TemporaryDirectory() as t:
+        src = f"{t}/in.txt"
+        with open(src, "w") as f:
+            f.write("a\nb")
+        code, err = run_err([
+            "reduce", src, "--trial", "no_such_cmd_xyz {}", "--expect", "0"])
+        assert code == cli.EXIT_ERROR
+        assert "127" in err and "failed to run" in err
+
+
+def test_reduce_reaches_empty_when_predicate_is_trivially_true():
+    # A too-weak predicate (always exit 0) is interesting on empty input; true
+    # 1-minimality must reduce all the way to empty, and warn it is blank.
+    with tempfile.TemporaryDirectory() as t:
+        src = f"{t}/in.txt"
+        with open(src, "w") as f:
+            f.write("a\nb\nc")
+        code, out = run(["reduce", src, "--trial", "true", "--expect", "0", "--json"])
+        d = json.loads(out)
+        assert code == cli.EXIT_OK and d["minimal_units"] == 0 and d["minimal"] == ""
+        _, err = run_err(["reduce", src, "--trial", "true", "--expect", "0"])
+        assert "empty or whitespace-only" in err
+
+
+def test_reduce_warns_when_a_smaller_candidate_breaks_the_trial():
+    # Trial works on the full input but exits 127 on any single-token candidate.
+    # Reduction is blocked there; reduce must warn rather than hide it.
+    with tempfile.TemporaryDirectory() as t:
+        src = f"{t}/set.txt"
+        with open(src, "w") as f:
+            f.write("1 2 7 8 9")
+        trial = 'if [ "$(wc -w < {})" -le 1 ]; then exit 127; fi; grep -qw 7 {}'
+        code, err = run_err(["reduce", src, "--trial", trial, "--expect", "0",
+                             "--unit", "token"])
+        assert code == cli.EXIT_OK and "failed to run" in err and "during reduction" in err
+
+
+def test_reduce_times_out_on_a_hanging_trial():
+    with tempfile.TemporaryDirectory() as t:
+        src = f"{t}/in.txt"
+        with open(src, "w") as f:
+            f.write("a\nb")
+        code, err = run_err([
+            "reduce", src, "--trial", "sleep 5", "--expect", "0", "--timeout", "0.5"])
+        assert code == cli.EXIT_ERROR and "timed out" in err
 
 
 if __name__ == "__main__":
